@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HomeBuild PM — Dashboard Chủ Đầu Tư</title>
+<style>
+  /* ==== Design tokens (palette đã validate — light/dark) ==== */
+  :root {
+    --page:           #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;  /* xanh chủ đạo: tiến độ */
+    --seq-150:        #b7d3f6;  /* nền track nhạt */
+    --good:           #0ca30c;
+    --warning:        #fab219;
+    --serious:        #ec835a;
+    --critical:       #d03b3b;
+    --good-text:      #006300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:           #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --seq-150:        #184f95;
+      --good-text:      #0ca30c;
+    }
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--text-primary);
+    font-size: 14px; line-height: 1.45;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+  /* ==== Header ==== */
+  header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding: 8px 0 16px; }
+  header h1 { font-size: 20px; font-weight: 700; }
+  .phase-badge {
+    background: var(--series-1); color:#fff; font-size:12px; font-weight:600;
+    padding: 3px 10px; border-radius: 99px;
+  }
+  .conn-badge { margin-left:auto; font-size:12px; color: var(--text-secondary); display:flex; align-items:center; gap:6px; }
+  .conn-dot { width:8px; height:8px; border-radius:50%; background: var(--warning); }
+  .conn-dot.ok { background: var(--good); }
+
+  /* ==== Cards ==== */
+  .grid-kpi { display:grid; grid-template-columns: 1fr 1fr 1.4fr; gap:12px; }
+  @media (max-width: 900px) { .grid-kpi { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .card h2 { font-size: 12px; font-weight: 600; letter-spacing:.04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
+
+  /* ==== Progress gauge ==== */
+  .gauge-row { display:flex; align-items:center; gap:16px; }
+  .gauge-val { font-size: 32px; font-weight: 700; }
+  .gauge-sub { font-size: 12.5px; color: var(--text-secondary); margin-top:4px; }
+
+  /* ==== Budget ==== */
+  .money { font-variant-numeric: tabular-nums; }
+  .budget-hero { font-size: 22px; font-weight: 700; }
+  .budget-hero small { font-size:13px; font-weight:400; color: var(--text-muted); }
+  .bar-track { height: 10px; border-radius: 5px; background: var(--grid); margin: 10px 0 8px; overflow:hidden; display:flex; }
+  .bar-track .seg { height:100%; }
+  .bar-track .seg + .seg { border-left: 2px solid var(--surface-1); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color: var(--text-secondary); }
+  .legend .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+
+  /* ==== Action queue ==== */
+  .aq-item {
+    display:flex; gap:10px; align-items:flex-start; padding:9px 10px;
+    border:1px solid var(--border); border-radius:10px; margin-bottom:8px; cursor:pointer;
+  }
+  .aq-item:hover { background: var(--page); }
+  .aq-item:last-child { margin-bottom:0; }
+  .aq-icon { font-size:15px; line-height:1.3; }
+  .aq-title { font-weight:600; font-size:13.5px; }
+  .aq-sub { font-size:12.5px; color: var(--text-secondary); }
+  .tag { font-size:11px; font-weight:700; padding:1px 8px; border-radius:99px; margin-left:auto; white-space:nowrap; }
+  .tag.critical { color:#fff; background: var(--critical); }
+  .tag.warning  { color:#5b3c00; background: var(--warning); }
+  .tag.good     { color:#fff; background: var(--good); }
+
+  /* ==== Gantt ==== */
+  .gantt { margin-top:12px; }
+  .g-row { display:grid; grid-template-columns: 150px 1fr 84px; align-items:center; gap:10px; padding:5px 0; }
+  .g-name { font-size:13px; color: var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .g-track { position:relative; height:14px; border-radius:4px; background: var(--grid); }
+  .g-plan { position:absolute; top:0; bottom:0; border-radius:4px; background: var(--seq-150); }
+  .g-fill { position:absolute; top:0; bottom:0; border-radius:4px; background: var(--series-1); }
+  .g-pct { font-size:12px; color: var(--text-muted); text-align:right; font-variant-numeric: tabular-nums; }
+  .g-hp { font-size:11px; margin-left:4px; }
+  .g-today { position:absolute; top:-4px; bottom:-4px; width:2px; background: var(--critical); border-radius:1px; }
+  .gantt-head { display:grid; grid-template-columns: 150px 1fr 84px; gap:10px; font-size:11px; color:var(--text-muted); padding-bottom:4px; border-bottom:1px solid var(--grid); margin-bottom:4px;}
+
+  /* ==== Split row ==== */
+  .grid-split { display:grid; grid-template-columns: 1.2fr 1fr; gap:12px; margin-top:12px; }
+  @media (max-width: 900px) { .grid-split { grid-template-columns: 1fr; } }
+  table { width:100%; border-collapse: collapse; }
+  th { text-align:left; font-size:11px; color:var(--text-muted); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--grid); }
+  td { padding:7px 6px; font-size:13px; border-bottom:1px solid var(--grid); }
+  tr:last-child td { border-bottom:none; }
+  td.r, th.r { text-align:right; }
+  .status-pill { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+
+  .risk-item { padding:9px 0; border-bottom:1px solid var(--grid); }
+  .risk-item:last-child { border-bottom:none; }
+  .risk-title { font-weight:600; font-size:13.5px; display:flex; align-items:center; gap:7px; }
+  .risk-sub { font-size:12.5px; color: var(--text-secondary); margin-top:2px; margin-left:15px; }
+
+  /* ==== Daily strip ==== */
+  .daily { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; }
+  .daily .meta { color: var(--text-secondary); font-size:13px; }
+  .btn {
+    border:1px solid var(--border); background:var(--surface-1); color:var(--text-primary);
+    font:inherit; font-size:13px; font-weight:600; border-radius:8px; padding:6px 14px; cursor:pointer;
+  }
+  .btn:hover { background: var(--page); }
+  .btn.primary { background: var(--series-1); border-color: var(--series-1); color:#fff; }
+
+  /* ==== Tooltip ==== */
+  #tip {
+    position:fixed; pointer-events:none; z-index:50; display:none;
+    background:var(--surface-1); border:1px solid var(--border); border-radius:8px;
+    padding:8px 10px; font-size:12.5px; box-shadow:0 4px 14px rgba(0,0,0,.12); max-width:260px;
+  }
+  #tip b { display:block; margin-bottom:2px; }
+  #tip .sub { color:var(--text-secondary); }
+  section { margin-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span style="font-size:22px">🏠</span>
+    <h1 id="prj-name">Nhà phố Q.7 — 1 trệt 3 lầu</h1>
+    <span class="phase-badge" id="prj-phase">THI CÔNG THÔ</span>
+    <span class="conn-badge"><span class="conn-dot" id="conn-dot"></span><span id="conn-text">Dữ liệu mẫu (chưa kết nối CSDL)</span></span>
+  </header>
+
+  <div class="grid-kpi">
+    <!-- Tiến độ -->
+    <div class="card">
+      <h2>Tiến độ tổng</h2>
+      <div class="gauge-row">
+        <svg id="gauge" width="92" height="92" viewBox="0 0 92 92" role="img" aria-label="Tiến độ tổng"></svg>
+        <div>
+          <div class="gauge-val"><span id="prog-pct">–</span>%</div>
+          <div class="gauge-sub" id="prog-note">–</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ngân sách -->
+    <div class="card">
+      <h2>Ngân sách</h2>
+      <div class="budget-hero money"><span id="bud-actual">–</span> <small>/ <span id="bud-plan">–</span></small></div>
+      <div class="bar-track" id="bud-bar" title=""></div>
+      <div class="legend" id="bud-legend"></div>
+      <div class="gauge-sub money" id="bud-vo" style="margin-top:8px"></div>
+    </div>
+
+    <!-- Cần hành động -->
+    <div class="card">
+      <h2>⚡ Cần hành động</h2>
+      <div id="action-queue"></div>
+    </div>
+  </div>
+
+  <!-- Gantt -->
+  <section class="card">
+    <h2>Tiến độ 9 giai đoạn</h2>
+    <div class="gantt-head"><span>Giai đoạn</span><span id="gantt-range"></span><span style="text-align:right">Hoàn thành</span></div>
+    <div class="gantt" id="gantt"></div>
+    <div class="legend" style="margin-top:10px">
+      <span><span class="sw" style="background:var(--series-1)"></span>Đã hoàn thành</span>
+      <span><span class="sw" style="background:var(--seq-150)"></span>Kế hoạch</span>
+      <span><span class="sw" style="background:var(--critical); width:3px; border-radius:1px"></span>Hôm nay</span>
+      <span>⛔ Điểm dừng nghiệm thu (Hold Point)</span>
+    </div>
+  </section>
+
+  <div class="grid-split">
+    <!-- Dòng tiền -->
+    <div class="card">
+      <h2>Dòng tiền sắp tới (90 ngày)</h2>
+      <table>
+        <thead><tr><th>Hạn</th><th>Khoản chi</th><th class="r">Số tiền</th><th>Trạng thái</th></tr></thead>
+        <tbody id="cashflow"></tbody>
+      </table>
+    </div>
+    <!-- Rủi ro -->
+    <div class="card">
+      <h2>Rủi ro đang theo dõi</h2>
+      <div id="risks"></div>
+    </div>
+  </div>
+
+  <!-- Nhật ký -->
+  <section class="card daily">
+    <strong>Nhật ký hôm nay:</strong>
+    <span class="meta" id="daily-meta">–</span>
+    <button class="btn primary" style="margin-left:auto">+ Ghi nhật ký</button>
+  </section>
+
+</div>
+<div id="tip"></div>
+
+<script type="module">
+/* =====================================================================
+   HomeBuild PM — Dashboard CĐT (web tĩnh + Supabase)
+   - Kết nối Supabase bằng anon key (an toàn cho frontend).
+   - Nếu CSDL chưa có bảng (chưa chạy migration) -> hiển thị DỮ LIỆU MẪU.
+   ===================================================================== */
+const SUPABASE_URL = "https://mgmvegjnogobmsqwmcmp.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_FHozycBQqje48O195i5rDg_Axw9oSw-";
+
+const fmtVND = (n) => new Intl.NumberFormat("vi-VN").format(n) + "₫";
+const fmtTr  = (n) => n >= 1e9 ? (n/1e9).toLocaleString("vi-VN",{maximumFractionDigits:2}) + " tỷ"
+                                : Math.round(n/1e6).toLocaleString("vi-VN") + "tr";
+
+/* ---------------- DỮ LIỆU MẪU (thay bằng query Supabase khi có bảng) -------- */
+const DEMO = {
+  project: { name: "Nhà phố Q.7 — 1 trệt 3 lầu", phase: "THI CÔNG THÔ" },
+  progress: { pct: 46.5, lateDays: 4, validExtDays: 6 },
+  budget: {
+    planned: 3_500_000_000,
+    contractorPaid: 2_100_000_000,
+    ownerPaid: 770_000_000,
+    variations: 85_000_000,
+  },
+  actions: [
+    { icon:"⛔", sev:"critical", title:"Nghiệm thu SÀN TẦNG 2", sub:"Hold Point — còn 14h là tự động thông qua (điều khoản 48h)", tag:"còn 14h" },
+    { icon:"💰", sev:"warning",  title:"Đợt 3 HĐ Thi công thô: " + fmtVND(320_000_000), sub:"Đến hạn 08/07 — quá hạn bị phạt 0,5%/ngày ≈ 1,6tr/ngày", tag:"4 ngày" },
+    { icon:"📝", sev:"warning",  title:"Duyệt phát sinh VO-003: nâng cấp gạch +28tr", sub:"Thầu hoàn thiện chờ xác nhận để đặt hàng", tag:"chờ duyệt" },
+  ],
+  phases: [
+    { name:"Tìm thầu",          start:0,  len:8,  pct:100 },
+    { name:"Thiết kế",          start:4,  len:14, pct:100 },
+    { name:"Xin phép XD",       start:14, len:10, pct:100 },
+    { name:"Ép cọc",            start:24, len:6,  pct:100, hp:"✓" },
+    { name:"Thi công thô",      start:30, len:22, pct:55,  hp:"chờ nghiệm thu sàn T2" },
+    { name:"Hoàn thiện",        start:52, len:20, pct:0 },
+    { name:"Lắp đặt nội thất",  start:70, len:12, pct:0 },
+    { name:"Hoàn công",         start:82, len:8,  pct:0 },
+  ],
+  todayPos: 41, // vị trí "hôm nay" trên trục 0-100
+  cashflow: [
+    { due:"08/07", item:"Đợt 3 — HĐ Thi công thô (Tiến Lộc)", amount:320_000_000, status:"warning", label:"Tới hạn" },
+    { due:"15/07", item:"Gạch ốp lát (CĐT tự mua)",           amount:95_000_000,  status:"good",    label:"Kế hoạch" },
+    { due:"22/07", item:"Thiết bị vệ sinh — đặt cọc 50%",     amount:40_000_000,  status:"good",    label:"Kế hoạch" },
+    { due:"05/08", item:"Đợt 4 — HĐ Thô (đổ sàn tầng 3)",     amount:320_000_000, status:"good",    label:"Kế hoạch" },
+  ],
+  risks: [
+    { sev:"critical", icon:"🔴", title:"Chờ việc máy ép cọc — ngày thứ 2", sub:"Lỗi CĐT chưa dọn mặt bằng → phạt lũy kế 8.000.000₫ (4tr/ngày)" },
+    { sev:"serious",  icon:"🟠", title:"Chênh lệch cọc: thử 18m / đại trà TB 15,2m", sub:"Dư ~34m cọc — cần chốt phương án trả lại (phí vận chuyển ~3,5tr)" },
+    { sev:"good",     icon:"🟢", title:"Khảo sát nhà lân cận: đủ 3/3 hồ sơ", sub:"Ảnh/video hiện trạng đã lưu DMS trước khi ép cọc" },
+  ],
+  daily: { weather:"☔ Mưa lớn 3,5h (tính gia hạn hợp lệ)", workers:8 },
+};
+
+/* ---------------- Kiểm tra kết nối Supabase ---------------- */
+async function checkSupabase() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/Project?select=id&limit=1`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    });
+    if (res.ok) {
+      document.getElementById("conn-dot").classList.add("ok");
+      document.getElementById("conn-text").textContent = "Đã kết nối Supabase";
+      return true;
+    }
+  } catch (_) { /* offline hoặc CSDL chưa sẵn sàng */ }
+  return false; // giữ dữ liệu mẫu
+}
+
+/* ---------------- Render ---------------- */
+const d = DEMO;
+
+// Header
+document.getElementById("prj-name").textContent = d.project.name;
+document.getElementById("prj-phase").textContent = d.project.phase;
+
+// Gauge (donut)
+(function renderGauge() {
+  const pct = d.progress.pct, r = 38, c = 2 * Math.PI * r;
+  const svg = document.getElementById("gauge");
+  svg.innerHTML = `
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--grid)" stroke-width="9"/>
+    <circle cx="46" cy="46" r="${r}" fill="none" stroke="var(--series-1)" stroke-width="9"
+      stroke-linecap="round" stroke-dasharray="${c*pct/100} ${c}" transform="rotate(-90 46 46)"/>`;
+  document.getElementById("prog-pct").textContent = pct.toLocaleString("vi-VN");
+  document.getElementById("prog-note").innerHTML =
+    `Trễ <b>${d.progress.lateDays} ngày</b><br>(đã trừ ${d.progress.validExtDays} ngày mưa hợp lệ)`;
+})();
+
+// Budget
+(function renderBudget() {
+  const b = d.budget, spent = b.contractorPaid + b.ownerPaid;
+  document.getElementById("bud-actual").textContent = fmtTr(spent);
+  document.getElementById("bud-plan").textContent = fmtTr(b.planned);
+  const bar = document.getElementById("bud-bar");
+  const p1 = b.contractorPaid / b.planned * 100, p2 = b.ownerPaid / b.planned * 100;
+  bar.innerHTML =
+    `<div class="seg" style="width:${p1}%;background:var(--series-1)" data-tip="Trả nhà thầu theo đợt HĐ|${fmtVND(b.contractorPaid)}"></div>` +
+    `<div class="seg" style="width:${p2}%;background:var(--seq-150)" data-tip="Hạng mục CĐT tự mua|${fmtVND(b.ownerPaid)}"></div>`;
+  document.getElementById("bud-legend").innerHTML =
+    `<span><span class="sw" style="background:var(--series-1)"></span>Trả thầu ${fmtTr(b.contractorPaid)}</span>` +
+    `<span><span class="sw" style="background:var(--seq-150)"></span>CĐT mua ${fmtTr(b.ownerPaid)}</span>`;
+  document.getElementById("bud-vo").innerHTML =
+    `Phát sinh đã duyệt: <b style="color:var(--good-text)">+${fmtTr(b.variations)}</b>`;
+})();
+
+// Action queue
+document.getElementById("action-queue").innerHTML = d.actions.map(a => `
+  <div class="aq-item">
+    <span class="aq-icon">${a.icon}</span>
+    <div><div class="aq-title">${a.title}</div><div class="aq-sub">${a.sub}</div></div>
+    <span class="tag ${a.sev}">${a.tag}</span>
+  </div>`).join("");
+
+// Gantt
+(function renderGantt() {
+  const total = 90;
+  document.getElementById("gantt-range").textContent = "T1/2026 → T9/2026";
+  document.getElementById("gantt").innerHTML = d.phases.map(p => {
+    const left = p.start/total*100, width = p.len/total*100;
+    const hp = p.hp ? `<span class="g-hp" title="Hold Point: ${p.hp}">⛔${p.hp==="✓"?"✓":""}</span>` : "";
+    return `<div class="g-row">
+      <div class="g-name">${p.name}${hp}</div>
+      <div class="g-track">
+        <div class="g-plan" style="left:${left}%;width:${width}%"
+             data-tip="${p.name}|Kế hoạch ${p.len} ngày · hoàn thành ${p.pct}%${p.hp && p.hp!=="✓" ? " · ⛔ "+p.hp : ""}"></div>
+        <div class="g-fill" style="left:${left}%;width:${width*p.pct/100}%"
+             data-tip="${p.name}|Kế hoạch ${p.len} ngày · hoàn thành ${p.pct}%${p.hp && p.hp!=="✓" ? " · ⛔ "+p.hp : ""}"></div>
+        <div class="g-today" style="left:${d.todayPos}%" data-tip="Hôm nay|04/07/2026"></div>
+      </div>
+      <div class="g-pct">${p.pct}%</div>
+    </div>`;
+  }).join("");
+})();
+
+// Cashflow
+const STATUS = {
+  good:     { color:"var(--good)",     },
+  warning:  { color:"var(--warning)",  },
+  serious:  { color:"var(--serious)",  },
+  critical: { color:"var(--critical)", },
+};
+document.getElementById("cashflow").innerHTML = d.cashflow.map(c => `
+  <tr>
+    <td class="money">${c.due}</td>
+    <td>${c.item}</td>
+    <td class="r money"><b>${fmtVND(c.amount)}</b></td>
+    <td><span class="status-pill"><span class="dot" style="background:${STATUS[c.status].color}"></span>${c.label}</span></td>
+  </tr>`).join("");
+
+// Risks
+document.getElementById("risks").innerHTML = d.risks.map(r => `
+  <div class="risk-item">
+    <div class="risk-title">${r.icon} ${r.title}</div>
+    <div class="risk-sub">${r.sub}</div>
+  </div>`).join("");
+
+// Daily
+document.getElementById("daily-meta").textContent =
+  `${d.daily.weather} · ${d.daily.workers} nhân công có mặt`;
+
+/* ---------------- Tooltip hover ---------------- */
+const tip = document.getElementById("tip");
+document.addEventListener("mousemove", (e) => {
+  const t = e.target.closest("[data-tip]");
+  if (!t) { tip.style.display = "none"; return; }
+  const [head, sub] = t.dataset.tip.split("|");
+  tip.innerHTML = `<b>${head}</b><span class="sub">${sub ?? ""}</span>`;
+  tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+});
+
+checkSupabase();
+</script>
+</body>
+</html>

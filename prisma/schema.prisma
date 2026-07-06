@@ -1,0 +1,903 @@
+// =====================================================================
+// HomeBuild PM — Database Schema (PostgreSQL + Prisma)
+// Tiền tệ: VND, lưu Decimal(18,0). Tỷ lệ %: Decimal(7,4) (vd 0.0500 = 0.05%/ngày)
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: connection URL khai báo trong prisma.config.ts (không còn trong schema)
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================== CORE =================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String?
+  fullName  String
+  role      UserRole @default(OWNER)
+  projects  Project[]
+  inspectionsConfirmed InspectionRecord[]
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  OWNER        // Chủ đầu tư
+  SUPERVISOR   // Giám sát thuê ngoài
+  VENDOR_REP   // Đại diện nhà thầu
+  ADMIN
+}
+
+model Project {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id])
+  name           String
+  address        String
+  landArea       Decimal? @db.Decimal(10, 2) // m2 đất
+  grossFloorArea Decimal? @db.Decimal(10, 2) // m2 sàn xây dựng
+  budgetPlanned  Decimal  @db.Decimal(18, 0) // tổng ngân sách dự kiến
+  status         ProjectStatus @default(PREPARING)
+
+  vendors        Vendor[]
+  contracts      Contract[]
+  phases         Phase[]
+  ownerPurchases OwnerPurchaseItem[]
+  dailyLogs      DailyLog[]
+  riskLogs       RiskLog[]
+  neighborSurveys NeighborSurvey[]
+  pilingRecords  PilingRecord[]
+  documents      Document[]
+  alerts         Alert[]
+  bankAccounts   BankAccount[]
+  checklistTemplates ChecklistTemplate[]
+  charter        ProjectCharter?
+  stakeholders   Stakeholder[]
+  createdAt      DateTime @default(now())
+}
+
+/** Mẫu checklist tái sử dụng theo hạng mục (VD "Kết cấu bê tông cốt thép", "Điện") — tự quản lý, sửa/xóa được */
+model ChecklistTemplate {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  category  String   // tên hạng mục, vd "Móng", "Điện", "Chống thấm"
+  items     ChecklistTemplateItem[]
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, category])
+}
+
+model ChecklistTemplateItem {
+  id         String            @id @default(cuid())
+  templateId String
+  template   ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label      String
+  sortOrder  Int               @default(0)
+}
+
+// --- Tài khoản ngân hàng của CĐT dùng để chi trả (đối soát với sao kê) ---
+model BankAccount {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id])
+  nickname      String   // "Vietcombank chính", "ACB dự phòng"...
+  bankName      String
+  accountNumber String
+  accountHolder String?
+  paymentStages PaymentStage[]
+  transactions  PaymentTransaction[]
+  createdAt     DateTime @default(now())
+}
+
+enum ProjectStatus {
+  PREPARING       // Tìm thầu / thiết kế
+  PERMIT_PENDING  // Đang xin phép XD
+  UNDER_CONSTRUCTION
+  HANDOVER        // Nghiệm thu bàn giao
+  AS_BUILT_DONE   // Đã hoàn công
+  ON_HOLD
+}
+
+// ================ MODULE 0: KHỞI TẠO (PMP INITIATING) =================
+// Project Charter + Stakeholder Register — nền tảng tham chiếu cho mọi module khác
+
+/** Điều lệ dự án (Project Charter) — 1-1 với Project, là "hiến pháp" của dự án */
+model ProjectCharter {
+  id               String    @id @default(cuid())
+  projectId        String    @unique
+  project          Project   @relation(fields: [projectId], references: [id])
+  objective        String    // Mục tiêu dự án — vì sao làm, kỳ vọng gì
+  scopeIncluded    String?   // Phạm vi bao gồm
+  scopeExcluded    String?   // Phạm vi KHÔNG bao gồm (loại trừ) — tránh tranh cãi scope creep
+  successCriteria  String?   // Tiêu chí coi là thành công (vd đúng ngân sách, đúng hạn, đạt chất lượng X)
+  assumptions      String?   // Giả định khi lập kế hoạch
+  constraints      String?   // Ràng buộc (ngân sách trần, quy hoạch, thời gian...)
+  sponsorName      String?   // Người phê duyệt / bảo trợ dự án (thường là CĐT)
+  plannedStartDate DateTime?
+  plannedEndDate   DateTime?
+  approvedAt       DateTime? // Ngày điều lệ được phê duyệt — coi như dự án chính thức khởi động
+
+  // --- Thông số công trình (quy mô) ---
+  floorsAboveGround Int?     // số tầng trên mặt đất (trệt tính là 1, không gồm hầm/tum)
+  hasBasement       Boolean  @default(false)
+  hasTum            Boolean  @default(false)
+  finishingStandard String?  // mô tả tiêu chuẩn vật liệu hoàn thiện tổng quan (gạch, sơn, thiết bị...)
+
+  floorPlans       CharterFloorPlan[]
+  budgetPhases     CharterBudgetPhase[]
+
+  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime  @default(now())
+}
+
+/** Bố trí phòng ốc từng tầng — mô tả tổng quan ở mức điều lệ, chưa cần chi tiết bản vẽ */
+/** Bố trí phòng theo số lượng cụ thể từng loại — dữ liệu này dùng để sau ước tính vật tư
+ * (vd tổng số WC toàn nhà -> gợi ý số lượng bồn cầu/lavabo cần mua), nên để số đếm rõ ràng
+ * thay vì mô tả tự do. */
+model CharterFloorPlan {
+  id           String         @id @default(cuid())
+  charterId    String
+  charter      ProjectCharter @relation(fields: [charterId], references: [id], onDelete: Cascade)
+  floorName    String         // "Trệt", "Lầu 1", "Lầu 2", "Tum"...
+  areaSqm      Decimal?       @db.Decimal(10, 2) // diện tích sàn tầng này (m2)
+  soPhongKhach Int            @default(0)
+  soPhongNgu   Int            @default(0)
+  soWc         Int            @default(0)
+  soBep        Int            @default(0)
+  soPhongTho   Int            @default(0)
+  soBanCong    Int            @default(0) // ban công/logia/sân phơi
+  ghiChuKhac   String?        // phòng khác không thuộc các loại trên (kho, phòng làm việc...)
+  sortOrder    Int            @default(0)
+}
+
+/** Phân bổ ngân sách theo giai đoạn chính — cost baseline sơ bộ lập ở bước khởi tạo, trước khi có tiến độ chi tiết */
+model CharterBudgetPhase {
+  id             String         @id @default(cuid())
+  charterId      String
+  charter        ProjectCharter @relation(fields: [charterId], references: [id], onDelete: Cascade)
+  name           String         // "Móng", "Thô", "Hoàn thiện", "Nội thất"...
+  plannedPercent Decimal        @db.Decimal(5, 2) // % tổng ngân sách dự án
+  sortOrder      Int            @default(0)
+}
+
+enum StakeholderLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/** Sổ các bên liên quan (Stakeholder Register) */
+model Stakeholder {
+  id                String            @id @default(cuid())
+  projectId         String
+  project           Project           @relation(fields: [projectId], references: [id])
+  name              String
+  role              String            // "Chủ đầu tư", "Giám sát", "Nhà thầu chính", "Hàng xóm", "Cán bộ phường"...
+  organization      String?
+  phone             String?
+  email             String?
+  influence         StakeholderLevel  @default(MEDIUM) // mức độ ảnh hưởng tới quyết định dự án
+  interest          StakeholderLevel  @default(MEDIUM)  // mức độ quan tâm/bị ảnh hưởng bởi dự án
+  communicationNeed String?           // vd "Báo cáo tiến độ tuần qua Zalo", "Chỉ cần báo khi có sự cố"
+  notes             String?
+  createdAt         DateTime          @default(now())
+}
+
+// ================= MODULE 1: CONTRACT & VENDORS ======================
+
+model Vendor {
+  id        String     @id @default(cuid())
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id])
+  type      VendorType
+  name      String     // vd: Thiết Thạch, Tiến Lộc
+  taxCode   String?    // Mã số thuế
+  address   String?
+  contactName String?
+  phone     String?
+  rating    Int?       // 1-5, CĐT tự chấm sau nghiệm thu
+  // Tài khoản nhận tiền — hiện sẵn trong form thanh toán, khỏi hỏi lại mỗi lần
+  bankName          String?
+  bankAccountNumber String?
+  bankAccountHolder String?
+  contracts Contract[]
+}
+
+enum VendorType {
+  DESIGN          // Thầu thiết kế
+  PILING          // Thầu ép cọc
+  STRUCTURE       // Thầu thô
+  FINISHING       // Thầu hoàn thiện
+  INTERIOR        // Thầu nội thất
+  MATERIAL_SUPPLIER // NCC vật tư lẻ
+  OTHER
+}
+
+model Contract {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id])
+  vendorId        String
+  vendor          Vendor   @relation(fields: [vendorId], references: [id])
+  code            String   // số HĐ
+  title           String
+  contractValue   Decimal  @db.Decimal(18, 0) // giá trị trước VAT
+  vatRate         Decimal  @db.Decimal(5, 2) @default(8) // %
+  retentionPct    Decimal  @db.Decimal(5, 2) @default(5) // % giữ lại bảo hành
+  signedDate      DateTime?
+  startDate       DateTime? // ngày khởi công theo HĐ
+  plannedEndDate  DateTime? // ngày hoàn thành theo HĐ
+  actualEndDate   DateTime?
+  status          ContractStatus @default(DRAFT)
+
+  paymentStages   PaymentStage[]
+  penaltyRules    PenaltyRule[]
+  penaltyEvents   PenaltyEvent[]
+  discountsReceived Discount[] @relation("DiscountTarget")
+  discountsTriggered Discount[] @relation("DiscountCondition")
+  variations      Variation[]
+  idleWaitLogs    IdleWaitLog[]
+  documents       Document[]
+
+  @@unique([projectId, code])
+}
+
+enum ContractStatus {
+  DRAFT
+  SIGNED
+  IN_PROGRESS
+  COMPLETED
+  TERMINATED   // hủy ngang -> kích hoạt phạt TERMINATION
+}
+
+// --- Rule engine phạt: mỗi HĐ khai báo rule riêng theo điều khoản thực tế ---
+model PenaltyRule {
+  id         String       @id @default(cuid())
+  contractId String
+  contract   Contract     @relation(fields: [contractId], references: [id])
+  type       PenaltyType
+  basis      PenaltyBasis
+  rate       Decimal      @db.Decimal(12, 4)
+  // basis=PCT_OF_CONTRACT_PER_DAY: rate=0.05 nghĩa là 0.05%/ngày
+  // basis=PCT_OF_CONTRACT:         rate=8    nghĩa là 8% giá trị HĐ (hủy ngang)
+  // basis=PCT_OF_ITEM_VALUE:       rate=8    nghĩa là 8% giá trị vật tư vi phạm
+  // basis=FIXED_PER_DAY:           rate=4000000 VND/ngày (phạt chờ việc máy ép cọc)
+  capPct     Decimal?     @db.Decimal(5, 2)  // trần phạt, mặc định 8% theo Đ.301 Luật TM
+  graceDays  Int          @default(0)        // số ngày ân hạn trước khi tính phạt
+  penaltyEvents PenaltyEvent[]
+}
+
+enum PenaltyType {
+  CONTRACTOR_LATE_PROGRESS // nhà thầu trễ tiến độ (0.05%/ngày)
+  OWNER_LATE_PAYMENT       // CĐT chậm thanh toán (0.5%/ngày)
+  TERMINATION              // hủy ngang HĐ (8% giá trị HĐ)
+  FAKE_MATERIAL            // vật tư giả/sai xuất xứ (8% giá trị vật tư)
+  OWNER_IDLE_WAIT          // CĐT gây chờ việc (4tr/ngày)
+}
+
+enum PenaltyBasis {
+  PCT_OF_CONTRACT_PER_DAY
+  PCT_OF_CONTRACT
+  PCT_OF_ITEM_VALUE
+  FIXED_PER_DAY
+}
+
+// --- Sự kiện phạt thực tế phát sinh (để đối soát & khấu trừ vào đợt thanh toán) ---
+model PenaltyEvent {
+  id           String   @id @default(cuid())
+  contractId   String
+  contract     Contract @relation(fields: [contractId], references: [id])
+  ruleId       String
+  rule         PenaltyRule @relation(fields: [ruleId], references: [id])
+  startDate    DateTime
+  endDate      DateTime?  // null = đang chạy (phạt theo ngày)
+  baseAmount   Decimal?   @db.Decimal(18, 0) // giá trị vật tư vi phạm (FAKE_MATERIAL)
+  computedAmount Decimal  @db.Decimal(18, 0) @default(0) // cron cập nhật hằng ngày
+  status       PenaltyEventStatus @default(RUNNING)
+  note         String?
+  documents    Document[] // biên bản, ảnh bằng chứng
+}
+
+enum PenaltyEventStatus {
+  RUNNING
+  SETTLED    // đã cấn trừ vào đợt thanh toán
+  WAIVED     // hai bên thỏa thuận bỏ qua
+  DISPUTED
+}
+
+// --- Giảm trừ/khuyến mãi có điều kiện ---
+model Discount {
+  id                  String   @id @default(cuid())
+  contractId          String   // HĐ ĐƯỢC giảm (vd: HĐ thiết kế)
+  contract            Contract @relation("DiscountTarget", fields: [contractId], references: [id])
+  type                DiscountType
+  percent             Decimal? @db.Decimal(5, 2) // 100 = miễn phí toàn bộ
+  amount              Decimal? @db.Decimal(18, 0)
+  conditionContractId String?  // giảm CHỈ hiệu lực khi HĐ này (thi công) được ký
+  conditionContract   Contract? @relation("DiscountCondition", fields: [conditionContractId], references: [id])
+  description         String?
+}
+
+enum DiscountType {
+  DESIGN_FEE_WAIVER // miễn 100% phí thiết kế nếu ký HĐ thi công
+  PROMOTION
+  NEGOTIATED
+}
+
+// ================ MODULE 2: CASH FLOW & BUDGET =======================
+
+// --- Thanh toán theo đợt gắn milestone ---
+model PaymentStage {
+  id                 String   @id @default(cuid())
+  contractId         String
+  contract           Contract @relation(fields: [contractId], references: [id])
+  stageNo            Int      // Đợt 1, 2, 3...
+  name               String   // "Ký HĐ", "Xong móng", "Đổ sàn trệt", "Nghiệm thu bàn giao"
+  percent            Decimal  @db.Decimal(9, 6) // % giá trị HĐ (nhiều số lẻ để số tiền quy đổi ngược không bị lệch làm tròn)
+  triggerMilestoneId String?  // milestone kích hoạt đợt này (Đợt 2 = milestone "Nghiệm thu móng")
+  triggerMilestone   Milestone? @relation(fields: [triggerMilestoneId], references: [id])
+  dueDaysAfterTrigger Int     @default(3) // hạn thanh toán sau khi milestone đạt
+  dueDate            DateTime? // cron gán khi milestone APPROVED
+  status             PaymentStageStatus @default(UPCOMING)
+  // paidDate/paidAmount/paidFromAccountId: cache tổng hợp từ PaymentTransaction (nguồn dữ liệu gốc),
+  // cập nhật lại mỗi khi thêm/xóa giao dịch — để các trang đọc nhanh không cần join.
+  paidDate           DateTime?
+  paidAmount         Decimal? @db.Decimal(18, 0)
+  paidFromAccountId  String?  // TK dùng cho lần trả gần nhất (xem đầy đủ trong transactions)
+  paidFromAccount    BankAccount? @relation(fields: [paidFromAccountId], references: [id])
+  transactions       PaymentTransaction[] // từng lần trả thực tế — hỗ trợ trả nhiều đợt cho 1 mốc
+  isFinal            Boolean  @default(false) // đợt cuối: quyết toán phát sinh + hoàn retention
+
+  @@unique([contractId, stageNo])
+}
+
+enum PaymentStageStatus {
+  UPCOMING  // milestone chưa đạt
+  DUE       // milestone đạt, trong hạn thanh toán -> App nhắc CĐT
+  OVERDUE   // quá hạn -> bắt đầu tính phạt OWNER_LATE_PAYMENT
+  PARTIAL   // đã trả một phần, còn thiếu
+  PAID      // đã trả đủ
+}
+
+/** Một lần chuyển tiền thực tế cho 1 đợt thanh toán — 1 đợt có thể có nhiều giao dịch */
+model PaymentTransaction {
+  id                String       @id @default(cuid())
+  paymentStageId    String
+  paymentStage      PaymentStage @relation(fields: [paymentStageId], references: [id], onDelete: Cascade)
+  amount            Decimal      @db.Decimal(18, 0)
+  paidDate          DateTime
+  paidFromAccountId String?
+  paidFromAccount   BankAccount? @relation(fields: [paidFromAccountId], references: [id])
+  note              String?
+  createdAt         DateTime     @default(now())
+}
+
+// --- Phiếu yêu cầu thay đổi (Phát sinh) ---
+model Variation {
+  id                String   @id @default(cuid())
+  contractId        String
+  contract          Contract @relation(fields: [contractId], references: [id])
+  code              String   // VO-001
+  title             String
+  reason            VariationReason
+  costDelta         Decimal  @db.Decimal(18, 0) // dương = tăng, âm = giảm so HĐ gốc
+  timeExtensionDays Int      @default(0)        // gia hạn tiến độ kèm theo
+  status            VariationStatus @default(DRAFT)
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  documents         Document[]
+
+  @@unique([contractId, code])
+}
+
+enum VariationReason {
+  DESIGN_CHANGE      // thay đổi thiết kế
+  MATERIAL_UPGRADE   // nâng cấp vật tư
+  SITE_CONDITION     // điều kiện hiện trường (đụng móng cũ, ống ngầm...)
+  OWNER_REQUEST
+}
+
+enum VariationStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED   // được cộng/trừ vào giá trị quyết toán
+  REJECTED
+}
+
+// --- Hạng mục CĐT tự mua (dòng tiền 2) ---
+model OwnerPurchaseItem {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  category     OwnerSupplyCategory
+  name         String   // "Gạch 60x60 Đồng Tâm", "Bồn cầu TOTO..."
+  plannedCost  Decimal  @db.Decimal(18, 0)
+  actualCost   Decimal? @db.Decimal(18, 0)
+  supplierName String?
+  neededByDate DateTime? // hạn phải có tại công trình (khớp tiến độ thầu)
+  deliveredAt  DateTime?
+  status       PurchaseStatus @default(PLANNED)
+  documents    Document[] // hóa đơn, ảnh hàng về
+}
+
+enum OwnerSupplyCategory {
+  TILES            // gạch ốp lát
+  SANITARY_WARE    // thiết bị vệ sinh
+  APPLIANCES       // điện máy
+  LOOSE_FURNITURE  // nội thất rời
+  OTHER
+}
+
+enum PurchaseStatus {
+  PLANNED
+  ORDERED
+  DELIVERED
+  INSTALLED
+}
+
+// ============= MODULE 3: SCHEDULE & MILESTONES =======================
+
+model Phase {
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id])
+  type         PhaseType
+  name         String
+  sortOrder    Int
+  weight       Decimal   @db.Decimal(5, 2) // tỷ trọng % tính tiến độ tổng (Σ = 100)
+  plannedStart DateTime?
+  plannedEnd   DateTime?
+  actualStart  DateTime?
+  actualEnd    DateTime?
+  progressPct  Decimal   @db.Decimal(5, 2) @default(0)
+  milestones   Milestone[]
+
+  @@unique([projectId, sortOrder])
+}
+
+enum PhaseType {
+  TENDERING         // tìm thầu
+  DESIGN_CONCEPT
+  DESIGN_TECHNICAL
+  PERMIT            // xin phép XD
+  PILING            // ép cọc
+  STRUCTURE         // thi công thô
+  FINISHING         // hoàn thiện
+  INTERIOR_INSTALL  // lắp đặt nội thất
+  AS_BUILT          // hoàn công
+}
+
+// --- Hold Point: chưa nghiệm thu = khóa bước sau ---
+model Milestone {
+  id                 String  @id @default(cuid())
+  phaseId            String
+  phase              Phase   @relation(fields: [phaseId], references: [id])
+  name               String  // "Nghiệm thu cốt thép móng", "Nghiệm thu sàn tầng 1"
+  isHoldPoint        Boolean @default(false)
+  plannedDate        DateTime? // ngày dự kiến nghiệm thu — mốc rõ ràng, không chỉ nằm chung chung trong khoảng ngày giai đoạn
+  confirmDeadlineHrs Int     @default(48) // hạn CĐT xác nhận qua App/Zalo
+  requestedAt        DateTime? // thầu gửi yêu cầu nghiệm thu lúc nào (mốc đếm 48h)
+  status             MilestoneStatus @default(PENDING)
+  inspections        InspectionRecord[]
+  paymentStages      PaymentStage[]   // các đợt thanh toán do milestone này kích hoạt
+  checklistItems     MilestoneChecklistItem[] // các đầu việc cần kiểm tra trước khi nghiệm thu đạt
+  dailyLogs          DailyLog[] @relation("DailyLogMilestones") // nhật ký công trình các ngày liên quan tới mốc này
+  vatTuDuAn          VatTuDuAn[] // vật tư cần hoàn thành trước mốc này (gợi ý ngày chốt/đặt/giao hàng)
+}
+
+/** 1 đầu việc cần kiểm tra trong checklist nghiệm thu của 1 milestone */
+model MilestoneChecklistItem {
+  id          String    @id @default(cuid())
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  label       String    // "Đúng số lượng, đường kính thép theo bản vẽ"
+  isChecked   Boolean   @default(false)
+  checkedAt   DateTime?
+  sortOrder   Int       @default(0)
+}
+
+enum MilestoneStatus {
+  PENDING             // chưa tới
+  AWAITING_INSPECTION // thầu đã yêu cầu, chờ CĐT nghiệm thu (đồng hồ 48h chạy)
+  APPROVED            // đạt -> mở khóa bước sau + kích hoạt PaymentStage
+  REJECTED            // không đạt, thầu phải khắc phục
+  AUTO_APPROVED       // quá 48h CĐT không phản hồi -> tự động thông qua (theo điều khoản HĐ)
+}
+
+model InspectionRecord {
+  id            String   @id @default(cuid())
+  milestoneId   String
+  milestone     Milestone @relation(fields: [milestoneId], references: [id])
+  method        InspectionMethod
+  result        InspectionResult
+  notes         String?
+  confirmedById String?
+  confirmedBy   User?    @relation(fields: [confirmedById], references: [id])
+  confirmedAt   DateTime @default(now())
+  documents     Document[] // biên bản scan, ảnh chụp, screenshot Zalo
+}
+
+enum InspectionMethod {
+  SITE_MINUTES  // biên bản giấy tại công trình
+  APP_CONFIRM
+  ZALO_CONFIRM
+}
+
+enum InspectionResult {
+  PASS
+  PASS_WITH_NOTES
+  FAIL
+}
+
+// --- Nhật ký công trình ---
+model DailyLog {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id])
+  logDate        DateTime @db.Date
+  weather        Weather
+  rainHours      Decimal? @db.Decimal(4, 1)
+  isForceMajeure Boolean  @default(false) // TRUE = ngày mưa bão đủ điều kiện gia hạn hợp lệ
+  workerCount    Int      @default(0)
+  workDescription String? // ghi chú thêm dạng tự do (tuỳ chọn) — công việc chính nên tách từng dòng ở items bên dưới
+  items          DailyLogItem[] // từng việc trong ngày tách riêng dòng, tick được khi xong
+  documents      Document[] // ảnh hiện trường trong ngày
+  milestones     Milestone[] @relation("DailyLogMilestones") // các mốc đang thi công/liên quan trong ngày
+
+  @@unique([projectId, logDate])
+}
+
+/** 1 dòng việc trong nhật ký công trình của 1 ngày — tách riêng thay vì gộp chung 1 đoạn văn dài */
+model DailyLogItem {
+  id         String   @id @default(cuid())
+  dailyLogId String
+  dailyLog   DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  label      String
+  isChecked  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+}
+
+enum Weather {
+  SUNNY
+  CLOUDY
+  LIGHT_RAIN
+  HEAVY_RAIN
+  STORM
+}
+
+// ================ MODULE 4: RISK MANAGEMENT ==========================
+
+model RiskLog {
+  id                  String   @id @default(cuid())
+  projectId           String
+  project             Project  @relation(fields: [projectId], references: [id])
+  category            RiskCategory
+  title               String
+  description         String?
+  severity            RiskSeverity @default(MEDIUM)
+  status              RiskStatus   @default(OPEN)
+  estimatedCostImpact Decimal?     @db.Decimal(18, 0)
+  actualCostImpact    Decimal?     @db.Decimal(18, 0)
+  mitigationPlan      String?
+  documents           Document[]
+  idleWaitLogs        IdleWaitLog[]
+  createdAt           DateTime @default(now())
+  closedAt            DateTime?
+}
+
+enum RiskCategory {
+  NEIGHBOR_SETTLEMENT_CRACK // lún nứt nhà hàng xóm
+  UNDERGROUND_OBSTACLE      // móng cũ, ống nước, cáp điện ngầm
+  OWNER_CAUSED_IDLE         // chờ việc do lỗi CĐT
+  PILE_QUANTITY_VARIANCE    // chênh lệch cọc ép thử vs đại trà
+  LEGAL_PERMIT
+  OTHER
+}
+
+enum RiskSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskStatus {
+  OPEN
+  MONITORING
+  MITIGATED
+  CLOSED
+}
+
+// --- Khảo sát hiện trạng nhà lân cận TRƯỚC khi ép cọc/đào móng ---
+model NeighborSurvey {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id])
+  neighborAddress String
+  neighborName    String?
+  neighborPhone   String?
+  surveyDate      DateTime
+  hasExistingCracks Boolean @default(false)
+  notes           String?
+  documents       Document[] // ảnh/video hiện trạng — bằng chứng pháp lý khi tranh chấp
+}
+
+// --- Tracker phạt chờ việc (vd: 4 triệu/ngày dàn máy ép cọc) ---
+model IdleWaitLog {
+  id           String   @id @default(cuid())
+  contractId   String
+  contract     Contract @relation(fields: [contractId], references: [id])
+  riskLogId    String?
+  riskLog      RiskLog? @relation(fields: [riskLogId], references: [id])
+  cause        IdleCause
+  startDate    DateTime
+  endDate      DateTime? // null = đang chờ, cron cộng dồn phạt mỗi ngày
+  dailyPenalty Decimal   @db.Decimal(18, 0) // vd 4,000,000
+  note         String?
+  documents    Document[]
+}
+
+enum IdleCause {
+  SITE_NOT_CLEARED      // chưa dọn mặt bằng
+  NEIGHBOR_COMPLAINT    // hàng xóm khiếu nại/ngăn cản
+  OWNER_DECISION_PENDING
+  OWNER_PAYMENT_PENDING
+}
+
+// --- Đối soát cọc ép thử vs đại trà ---
+model PilingRecord {
+  id               String  @id @default(cuid())
+  projectId        String
+  project          Project @relation(fields: [projectId], references: [id])
+  testPileCount    Int     // số cọc ép thử
+  testPileAvgDepth Decimal @db.Decimal(6, 2) // độ sâu TB cọc thử (m)
+  designPileLength Decimal @db.Decimal(6, 2) // chiều dài cọc đặt hàng theo thiết kế
+  unitPricePerMeter Decimal @db.Decimal(18, 0)
+  returnFreightFee  Decimal? @db.Decimal(18, 0) // phí vận chuyển trả cọc dư
+  piles            PileItem[]
+}
+
+model PileItem {
+  id             String  @id @default(cuid())
+  pilingRecordId String
+  pilingRecord   PilingRecord @relation(fields: [pilingRecordId], references: [id])
+  pileNo         Int
+  plannedLength  Decimal @db.Decimal(6, 2)
+  actualDepth    Decimal? @db.Decimal(6, 2)
+  cutOffLength   Decimal? @db.Decimal(6, 2) // phần dư phải cắt/trả lại
+  pressedAt      DateTime?
+}
+
+// ================ MODULE 5: DOCUMENT CONTROL =========================
+
+model Document {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+  docType   DocType
+  title     String
+  fileUrl   String
+  mimeType  String?
+  fileSize  Int?
+  version   Int     @default(1)
+  tags      String[] // tìm kiếm tự do: "móng", "tầng 2", "WC master"
+  meta      Json?    // bản vẽ xin phép: { "cotNen": 0.45, "khoangLui": 2.4, "dienTichSan": 210.5, "tum": true }
+
+  // Quan hệ mở tới mọi nghiệp vụ (tất cả optional)
+  contractId         String?
+  contract           Contract? @relation(fields: [contractId], references: [id])
+  variationId        String?
+  variation          Variation? @relation(fields: [variationId], references: [id])
+  inspectionRecordId String?
+  inspectionRecord   InspectionRecord? @relation(fields: [inspectionRecordId], references: [id])
+  dailyLogId         String?
+  dailyLog           DailyLog? @relation(fields: [dailyLogId], references: [id])
+  riskLogId          String?
+  riskLog            RiskLog? @relation(fields: [riskLogId], references: [id])
+  neighborSurveyId   String?
+  neighborSurvey     NeighborSurvey? @relation(fields: [neighborSurveyId], references: [id])
+  idleWaitLogId      String?
+  idleWaitLog        IdleWaitLog? @relation(fields: [idleWaitLogId], references: [id])
+  penaltyEventId     String?
+  penaltyEvent       PenaltyEvent? @relation(fields: [penaltyEventId], references: [id])
+  ownerPurchaseItemId String?
+  ownerPurchaseItem  OwnerPurchaseItem? @relation(fields: [ownerPurchaseItemId], references: [id])
+
+  uploadedAt DateTime @default(now())
+
+  @@index([projectId, docType])
+}
+
+enum DocType {
+  PERMIT_DRAWING     // bản vẽ xin phép (meta: cốt nền, khoảng lùi, DT sàn, tum)
+  TECHNICAL_DRAWING  // bản vẽ kỹ thuật thi công
+  INTERIOR_3D        // bản vẽ nội thất 3D
+  AS_BUILT_DRAWING   // bản vẽ hoàn công
+  CONTRACT_FILE
+  INSPECTION_MINUTES // biên bản nghiệm thu
+  SURVEY_MEDIA       // ảnh/video khảo sát hiện trạng lân cận
+  INVOICE
+  SITE_PHOTO
+  OTHER
+}
+
+// ======================= ALERT SYSTEM ================================
+
+model Alert {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id])
+  type      AlertType
+  severity  RiskSeverity @default(MEDIUM)
+  title     String
+  message   String
+  dueAt     DateTime? // hạn chót hành động (thanh toán, xác nhận 48h)
+  refTable  String?   // "PaymentStage" | "Milestone" | "IdleWaitLog"...
+  refId     String?
+  status    AlertStatus @default(ACTIVE)
+  createdAt DateTime @default(now())
+
+  @@index([projectId, status])
+}
+
+enum AlertType {
+  PAYMENT_DUE            // tới hạn thanh toán đợt
+  PAYMENT_OVERDUE        // quá hạn -> đang bị tính phạt 0.5%/ngày
+  HOLD_POINT_REQUESTED   // thầu yêu cầu nghiệm thu, đồng hồ 48h bắt đầu
+  HOLD_POINT_EXPIRING    // còn <12h là auto-approve
+  IDLE_PENALTY_RUNNING   // phạt chờ việc đang cộng dồn mỗi ngày
+  PILE_VARIANCE          // chênh lệch cọc thử vs đại trà vượt ngưỡng
+  UNDERGROUND_OBSTACLE   // phát hiện chướng ngại vật ngầm -> cảnh báo phát sinh
+  CONTRACT_DEADLINE_NEAR
+  BUDGET_OVERRUN         // chi thực tế vượt ngân sách hạng mục
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+// ================ MODULE 6: VẬT TƯ HOÀN THIỆN =========================
+// Các bảng này được tạo bằng SQL thuần (database/00X_*.sql), nằm ngoài lịch sử
+// Prisma Migrate. Nếu sau này chạy `prisma migrate dev` cho thay đổi khác và
+// Prisma báo "drift", KHÔNG chọn reset — xem hướng dẫn trong database/README.md.
+
+model VatTuNhom {
+  id            BigInt   @id @default(autoincrement())
+  maNhomVatTu   String   @unique @map("ma_nhom_vat_tu") @db.VarChar(20)
+  maNhomKyThuat String   @unique @map("ma_nhom_ky_thuat") @db.VarChar(100)
+  tenNhomVatTu  String   @map("ten_nhom_vat_tu") @db.VarChar(255)
+  thuTu         Int      @default(0) @map("thu_tu")
+  ghiChu        String?  @map("ghi_chu")
+  trangThai     String   @default("dang_dung") @map("trang_thai") @db.VarChar(30)
+  ngayTao       DateTime @default(now()) @map("ngay_tao")
+  ngayCapNhat   DateTime @default(now()) @map("ngay_cap_nhat")
+  vatTuList     VatTu[]
+
+  @@map("nhom_vat_tu")
+}
+
+model VatTu {
+  id               BigInt    @id @default(autoincrement())
+  maVatTu          String    @unique @map("ma_vat_tu") @db.VarChar(50)
+  tenVatTu         String    @map("ten_vat_tu") @db.VarChar(255)
+  idNhomVatTu      BigInt    @map("id_nhom_vat_tu")
+  nhom             VatTuNhom @relation(fields: [idNhomVatTu], references: [id])
+  donViTinh        String?   @map("don_vi_tinh") @db.VarChar(50)
+  quyCach          String?   @map("quy_cach")
+  thuongHieuGoiY   String?   @map("thuong_hieu_goi_y")
+  xuatXu           String?   @map("xuat_xu") @db.VarChar(100)
+  donGiaThietThach Decimal?  @map("don_gia_thiet_thach") @db.Decimal(18, 2)
+  donGiaCatNghi    Decimal?  @map("don_gia_cat_nghi") @db.Decimal(18, 2)
+  donGiaGoiChuan   Decimal?  @map("don_gia_goi_chuan") @db.Decimal(18, 2)
+  donGiaThamKhao   Decimal?  @map("don_gia_tham_khao") @db.Decimal(18, 2)
+  nguonMuaMacDinh  String    @default("chua_xac_dinh") @map("nguon_mua_mac_dinh") @db.VarChar(50)
+  canChotMau       Boolean   @default(true) @map("can_chot_mau")
+  canTheoDoiTienDo Boolean   @default(true) @map("can_theo_doi_tien_do")
+  ghiChu           String?   @map("ghi_chu")
+  trangThai        String    @default("dang_dung") @map("trang_thai") @db.VarChar(30)
+  ngayTao          DateTime  @default(now()) @map("ngay_tao")
+  ngayCapNhat      DateTime  @default(now()) @map("ngay_cap_nhat")
+  suDungTrongDuAn  VatTuDuAn[]
+
+  @@map("vat_tu")
+}
+
+model NhaCungCapVatTu {
+  id              BigInt      @id @default(autoincrement())
+  maNhaCungCap    String      @unique @map("ma_nha_cung_cap") @db.VarChar(50)
+  tenNhaCungCap   String      @map("ten_nha_cung_cap") @db.VarChar(255)
+  loaiNhaCungCap  String?     @map("loai_nha_cung_cap") @db.VarChar(100)
+  soDienThoai     String?     @map("so_dien_thoai") @db.VarChar(50)
+  email           String?     @db.VarChar(255)
+  diaChi          String?     @map("dia_chi")
+  ghiChu          String?     @map("ghi_chu")
+  trangThai       String      @default("dang_dung") @map("trang_thai") @db.VarChar(30)
+  ngayTao         DateTime    @default(now()) @map("ngay_tao")
+  ngayCapNhat     DateTime    @default(now()) @map("ngay_cap_nhat")
+  vatTuDuAnDaDung VatTuDuAn[]
+
+  @@map("nha_cung_cap")
+}
+
+/** Dự án cho module vật tư — bảng riêng ngoài Project, hiện chỉ có 1 dòng (nhà của CĐT) */
+model DuAn {
+  id                  BigInt      @id @default(autoincrement())
+  maDuAn              String      @unique @map("ma_du_an") @db.VarChar(50)
+  tenDuAn             String      @map("ten_du_an") @db.VarChar(255)
+  diaChi              String?     @map("dia_chi")
+  chuDauTu            String?     @map("chu_dau_tu") @db.VarChar(255)
+  ngayKhoiCong        DateTime?   @map("ngay_khoi_cong") @db.Date
+  ngayDuKienHoanThanh DateTime?   @map("ngay_du_kien_hoan_thanh") @db.Date
+  trangThai           String      @default("dang_chuan_bi") @map("trang_thai") @db.VarChar(50)
+  ghiChu              String?     @map("ghi_chu")
+  ngayTao             DateTime    @default(now()) @map("ngay_tao")
+  ngayCapNhat         DateTime    @default(now()) @map("ngay_cap_nhat")
+  vatTuDuAn           VatTuDuAn[]
+
+  @@map("du_an")
+}
+
+model VatTuDuAn {
+  id                  BigInt           @id @default(autoincrement())
+  idDuAn              BigInt           @map("id_du_an")
+  duAn                DuAn             @relation(fields: [idDuAn], references: [id])
+  idVatTu             BigInt           @map("id_vat_tu")
+  vatTu               VatTu            @relation(fields: [idVatTu], references: [id])
+  idNhaCungCap        BigInt?          @map("id_nha_cung_cap")
+  nhaCungCap          NhaCungCapVatTu? @relation(fields: [idNhaCungCap], references: [id])
+  idMilestone         String?          @map("id_milestone")
+  milestone           Milestone?       @relation(fields: [idMilestone], references: [id])
+  khuVucSuDung        String?          @map("khu_vuc_su_dung") @db.VarChar(255)
+  khoiLuongDuKien     Decimal?         @map("khoi_luong_du_kien") @db.Decimal(18, 2)
+  khoiLuongThucTe     Decimal?         @map("khoi_luong_thuc_te") @db.Decimal(18, 2)
+  donViTinh           String?          @map("don_vi_tinh") @db.VarChar(50)
+  donGiaDuKien        Decimal?         @map("don_gia_du_kien") @db.Decimal(18, 2)
+  donGiaChot          Decimal?         @map("don_gia_chot") @db.Decimal(18, 2)
+  thanhTienDuKien     Decimal?         @map("thanh_tien_du_kien") @db.Decimal(18, 2)
+  thanhTienChot       Decimal?         @map("thanh_tien_chot") @db.Decimal(18, 2)
+  nguoiMua            String           @default("chua_xac_dinh") @map("nguoi_mua") @db.VarChar(50)
+  trangThaiChotMau    String           @default("chua_chot") @map("trang_thai_chot_mau") @db.VarChar(50)
+  trangThaiDatHang    String           @default("chua_dat") @map("trang_thai_dat_hang") @db.VarChar(50)
+  trangThaiGiaoHang   String           @default("chua_giao") @map("trang_thai_giao_hang") @db.VarChar(50)
+  trangThaiThiCong    String           @default("chua_thi_cong") @map("trang_thai_thi_cong") @db.VarChar(50)
+  ngayCanChotMau      DateTime?        @map("ngay_can_chot_mau") @db.Date
+  ngayCanDatHang      DateTime?        @map("ngay_can_dat_hang") @db.Date
+  ngayCanGiaoHang     DateTime?        @map("ngay_can_giao_hang") @db.Date
+  ngayCanThiCong      DateTime?        @map("ngay_can_thi_cong") @db.Date
+  ngayThucTeChotMau   DateTime?        @map("ngay_thuc_te_chot_mau") @db.Date
+  ngayThucTeDatHang   DateTime?        @map("ngay_thuc_te_dat_hang") @db.Date
+  ngayThucTeGiaoHang  DateTime?        @map("ngay_thuc_te_giao_hang") @db.Date
+  ngayThucTeThiCong   DateTime?        @map("ngay_thuc_te_thi_cong") @db.Date
+  ngayThucTeNghiemThu DateTime?        @map("ngay_thuc_te_nghiem_thu") @db.Date
+  ghiChu              String?          @map("ghi_chu")
+  ngayTao             DateTime         @default(now()) @map("ngay_tao")
+  ngayCapNhat         DateTime         @default(now()) @map("ngay_cap_nhat")
+  congViec            CongViecVatTu[]
+
+  @@map("vat_tu_du_an")
+}
+
+model CongViecVatTu {
+  id             BigInt    @id @default(autoincrement())
+  idVatTuDuAn    BigInt    @map("id_vat_tu_du_an")
+  vatTuDuAn      VatTuDuAn @relation(fields: [idVatTuDuAn], references: [id])
+  maCongViec     String    @map("ma_cong_viec") @db.VarChar(50)
+  tenCongViec    String    @map("ten_cong_viec") @db.VarChar(255)
+  thuTu          Int       @default(0) @map("thu_tu")
+  ngayDuKien     DateTime? @map("ngay_du_kien") @db.Date
+  ngayThucTe     DateTime? @map("ngay_thuc_te") @db.Date
+  nguoiPhuTrach  String?   @map("nguoi_phu_trach") @db.VarChar(255)
+  trangThai      String    @default("chua_lam") @map("trang_thai") @db.VarChar(50)
+  ghiChu         String?   @map("ghi_chu")
+  ngayTao        DateTime  @default(now()) @map("ngay_tao")
+  ngayCapNhat    DateTime  @default(now()) @map("ngay_cap_nhat")
+
+  @@map("cong_viec_vat_tu")
+}

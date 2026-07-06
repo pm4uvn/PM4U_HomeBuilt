@@ -1,0 +1,207 @@
+import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { getDefaultProject } from "@/services/dashboard.service";
+import { Card, Tag, EmptyState } from "@/components/ui";
+import { fmtVND, fmtDate, daysBetween } from "@/lib/format";
+import { RISK_CATEGORY, RISK_SEVERITY, IDLE_CAUSE } from "@/lib/labels";
+import {
+  CreateRiskForm, RiskStatusSelect, CreateNeighborSurveyForm,
+  StartIdleWaitForm, StopIdleWaitButton, CreatePilingRecordForm, AddPileItemForm,
+} from "./forms";
+
+export const dynamic = "force-dynamic";
+
+const SEV_TAG: Record<string, "good" | "warning" | "critical" | "neutral"> = {
+  LOW: "good", MEDIUM: "neutral", HIGH: "warning", CRITICAL: "critical",
+};
+
+export default async function RisksPage() {
+  await requireUser();
+  const project = await getDefaultProject();
+  if (!project) {
+    return <Card><EmptyState title="Chưa có dự án" sub="Tạo dự án ở trang Hợp đồng trước" /></Card>;
+  }
+
+  const [risks, surveys, idleLogs, pilingRecords, contracts] = await Promise.all([
+    prisma.riskLog.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ status: "asc" }, { severity: "desc" }],
+    }),
+    prisma.neighborSurvey.findMany({ where: { projectId: project.id }, orderBy: { surveyDate: "desc" } }),
+    prisma.idleWaitLog.findMany({
+      where: { contract: { projectId: project.id } },
+      include: { contract: { include: { vendor: true } } },
+      orderBy: { startDate: "desc" },
+    }),
+    prisma.pilingRecord.findMany({
+      where: { projectId: project.id },
+      include: { piles: { orderBy: { pileNo: "asc" } } },
+    }),
+    prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: true } }),
+  ]);
+
+  const now = new Date();
+
+  return (
+    <div className="space-y-3">
+      <header className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-xl font-bold">⚠️ Quản lý rủi ro</h1>
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <CreateNeighborSurveyForm projectId={project.id} />
+          {contracts.length > 0 && (
+            <StartIdleWaitForm
+              contracts={contracts.map((c) => ({ id: c.id, label: `${c.code} — ${c.vendor.name}` }))}
+            />
+          )}
+          <CreatePilingRecordForm projectId={project.id} />
+          <CreateRiskForm projectId={project.id} />
+        </div>
+      </header>
+
+      {/* Sổ rủi ro */}
+      <Card title={`Sổ rủi ro (${risks.length})`}>
+        {risks.length === 0 ? (
+          <EmptyState title="Chưa ghi nhận rủi ro" />
+        ) : (
+          <div className="space-y-2">
+            {risks.map((r) => (
+              <div key={r.id} className="flex items-start gap-3 flex-wrap border border-line rounded-lg px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-[13.5px] flex items-center gap-2 flex-wrap">
+                    {r.title}
+                    <Tag sev={SEV_TAG[r.severity]}>{RISK_SEVERITY[r.severity]}</Tag>
+                    <span className="text-xs text-muted font-normal">{RISK_CATEGORY[r.category]}</span>
+                  </div>
+                  {r.description && <div className="text-[12.5px] text-ink-2 mt-0.5">{r.description}</div>}
+                  <div className="text-xs text-muted mt-0.5">
+                    {r.estimatedCostImpact != null && <>Ước tính ảnh hưởng: <b>{fmtVND(Number(r.estimatedCostImpact))}</b> · </>}
+                    {r.mitigationPlan && <>Xử lý: {r.mitigationPlan}</>}
+                  </div>
+                </div>
+                <RiskStatusSelect riskId={r.id} current={r.status} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
+        {/* Khảo sát lân cận */}
+        <Card title={`Khảo sát hiện trạng nhà lân cận (${surveys.length})`}>
+          <p className="text-xs text-muted mb-3">
+            📸 Chụp ảnh/video hiện trạng TRƯỚC khi ép cọc/đào móng — bằng chứng pháp lý khi có khiếu nại lún nứt.
+            File ảnh lưu ở trang Hồ sơ với loại &quot;Ảnh/video khảo sát&quot;.
+          </p>
+          {surveys.length === 0 ? (
+            <EmptyState title="Chưa khảo sát nhà nào" />
+          ) : (
+            <ul className="space-y-2 text-[13px]">
+              {surveys.map((s) => (
+                <li key={s.id} className="border-b border-grid last:border-0 pb-2">
+                  <div className="font-semibold">{s.neighborAddress}</div>
+                  <div className="text-ink-2 text-xs">
+                    {s.neighborName && `${s.neighborName} · `}
+                    {s.neighborPhone && `${s.neighborPhone} · `}
+                    khảo sát {fmtDate(s.surveyDate)} ·{" "}
+                    {s.hasExistingCracks ? "⚠️ CÓ vết nứt sẵn" : "✅ không có vết nứt sẵn"}
+                  </div>
+                  {s.notes && <div className="text-xs text-muted">{s.notes}</div>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* Phạt chờ việc */}
+        <Card title={`Tracker phạt chờ việc (${idleLogs.length})`}>
+          {idleLogs.length === 0 ? (
+            <EmptyState title="Không có sự kiện chờ việc" sub="VD: dàn máy ép cọc đứng chờ vì chưa dọn mặt bằng — 4tr/ngày" />
+          ) : (
+            <div className="space-y-2">
+              {idleLogs.map((log) => {
+                const running = !log.endDate;
+                const days = Math.max(1, daysBetween(log.startDate, log.endDate ?? now) + (running ? 1 : 0));
+                const total = days * Number(log.dailyPenalty);
+                return (
+                  <div key={log.id} className="border border-line rounded-lg px-3 py-2.5 text-[13px]">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <b>{log.contract.vendor.name}</b>
+                      <span className="text-muted text-xs">{IDLE_CAUSE[log.cause]}</span>
+                      {running ? <Tag sev="critical">ĐANG CHẠY — ngày {days}</Tag> : <Tag sev="neutral">Đã dừng</Tag>}
+                      {running && <StopIdleWaitButton idleLogId={log.id} />}
+                    </div>
+                    <div className="text-ink-2 text-xs mt-1 money">
+                      {fmtDate(log.startDate)} → {log.endDate ? fmtDate(log.endDate) : "nay"} ·{" "}
+                      {fmtVND(Number(log.dailyPenalty))}/ngày ·{" "}
+                      lũy kế <b style={{ color: "var(--critical)" }}>{fmtVND(total)}</b>
+                    </div>
+                    {log.note && <div className="text-xs text-muted mt-0.5">{log.note}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Đối soát cọc ép */}
+      {pilingRecords.map((rec) => {
+        const totalSurplus = rec.piles.reduce((s, p) => s + Number(p.cutOffLength ?? 0), 0);
+        const surplusCost = totalSurplus * Number(rec.unitPricePerMeter);
+        const avgActual =
+          rec.piles.filter((p) => p.actualDepth != null).length > 0
+            ? rec.piles.reduce((s, p) => s + Number(p.actualDepth ?? 0), 0) /
+              rec.piles.filter((p) => p.actualDepth != null).length
+            : 0;
+        return (
+          <Card key={rec.id} title="Đối soát cọc: ép thử vs đại trà">
+            <div className="flex gap-4 flex-wrap text-[13px] mb-3">
+              <span>Cọc thử: <b>{rec.testPileCount} cây · sâu TB {Number(rec.testPileAvgDepth)}m</b></span>
+              <span>Đặt hàng: <b>{Number(rec.designPileLength)}m/cây</b></span>
+              <span>Đại trà: <b>{rec.piles.length} cây · sâu TB {avgActual.toFixed(1)}m</b></span>
+              {totalSurplus > 0 && (
+                <span style={{ color: "var(--critical)" }}>
+                  Dư <b>{totalSurplus.toFixed(1)}m ≈ {fmtVND(Math.round(surplusCost))}</b>
+                  {rec.returnFreightFee && ` + phí trả ${fmtVND(Number(rec.returnFreightFee))}`}
+                </span>
+              )}
+              <span className="ml-auto">
+                <AddPileItemForm
+                  pilingRecordId={rec.id}
+                  nextPileNo={rec.piles.length + 1}
+                  designLength={Number(rec.designPileLength)}
+                />
+              </span>
+            </div>
+            {rec.piles.length > 0 && (
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left text-[11px] text-muted border-b border-grid">
+                    <th className="py-1 pr-2 font-semibold">Cọc</th>
+                    <th className="py-1 pr-2 font-semibold text-right">Dài đặt (m)</th>
+                    <th className="py-1 pr-2 font-semibold text-right">Sâu thực tế (m)</th>
+                    <th className="py-1 pr-2 font-semibold text-right">Dư (m)</th>
+                    <th className="py-1 font-semibold">Ngày ép</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rec.piles.map((p) => (
+                    <tr key={p.id} className="border-b border-grid last:border-0 text-[13px]">
+                      <td className="py-1.5 pr-2 font-semibold">#{p.pileNo}</td>
+                      <td className="py-1.5 pr-2 text-right money">{Number(p.plannedLength)}</td>
+                      <td className="py-1.5 pr-2 text-right money">{p.actualDepth != null ? Number(p.actualDepth) : "—"}</td>
+                      <td className="py-1.5 pr-2 text-right money" style={{ color: Number(p.cutOffLength ?? 0) > 0 ? "var(--critical)" : undefined }}>
+                        {p.cutOffLength != null ? Number(p.cutOffLength).toFixed(1) : "—"}
+                      </td>
+                      <td className="py-1.5 money">{fmtDate(p.pressedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
