@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { ModalButton } from "@/components/Modal";
+import { PreviewButton } from "@/components/FilePreview";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui";
 import { PHASE_TYPE, INSPECTION_METHOD, WEATHER } from "@/lib/labels";
 import { fmtDate } from "@/lib/format";
@@ -13,6 +14,7 @@ import {
   createStandardMilestones, createFullSchedule,
   resetSchedule, requestInspectionAction, recordInspectionAction, createDailyLog,
   updateDailyLog, deleteDailyLog, toggleDailyLogItem,
+  uploadDailyLogPhotos, deleteDailyLogPhoto, type UploadPhotosState,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
 } from "./actions";
 import type { PhaseType } from "@prisma/client";
@@ -554,6 +556,74 @@ export function DailyLogItemsView({ items }: { items: { id: string; label: strin
           <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
         </label>
       ))}
+    </div>
+  );
+}
+
+export type DailyLogPhoto = { id: string; url: string; title: string };
+
+/** Ảnh hiện trường gắn vào 1 ngày nhật ký — bằng chứng tiến độ/chất lượng khi tranh chấp sau này */
+export function DailyLogPhotos({
+  dailyLogId,
+  projectId,
+  photos,
+}: {
+  dailyLogId: string;
+  projectId: string;
+  photos: DailyLogPhoto[];
+}) {
+  const [state, action, pending] = useActionState<UploadPhotosState, FormData>(
+    async (prev, fd) => uploadDailyLogPhotos(dailyLogId, projectId, prev, fd),
+    {},
+  );
+  const formRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-1.5">
+      {photos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {photos.map((p) => (
+            <div key={p.id} className="relative group shrink-0">
+              <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
+              </PreviewButton>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Xóa ảnh "${p.title}"?`)) deleteDailyLogPhoto(p.id);
+                }}
+                className="absolute -top-1.5 -right-1.5 bg-critical text-white rounded-full w-4 h-4 text-[10px] leading-4 opacity-0 group-hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Bấm "+ Ảnh" mở thẳng hộp chọn ảnh; chọn xong tự nộp form ngay, khỏi cần bấm nút submit riêng */}
+      <form ref={formRef} action={action}>
+        <input
+          ref={inputRef}
+          type="file"
+          name="files"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={() => formRef.current?.requestSubmit()}
+        />
+        <Button
+          type="button"
+          variant="default"
+          className="!py-1 !px-2 text-xs"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+        >
+          {pending ? "Đang tải..." : "+ Ảnh"}
+        </Button>
+      </form>
+      {state.error && <p className="text-critical text-xs mt-1">{state.error}</p>}
     </div>
   );
 }

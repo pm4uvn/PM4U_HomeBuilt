@@ -4,6 +4,57 @@ import { Card, Tag, StatusPill, EmptyState } from "@/components/ui";
 import { fmtVND, fmtTr, fmtDate } from "@/lib/format";
 import type { DashboardData, GanttPhase } from "@/services/dashboard.service";
 
+/* ---------- Chỉ số sức khỏe dự án (Project Health Score) ---------- */
+const HEALTH_COLOR: Record<string, string> = {
+  good: "var(--good)",
+  warning: "var(--warning)",
+  critical: "var(--critical)",
+};
+
+export function HealthScoreCard({ health }: { health: DashboardData["healthScore"] }) {
+  const r = 38;
+  const c = 2 * Math.PI * r;
+  const color = HEALTH_COLOR[health.sev];
+  const breakdown = [
+    { label: "Tiến độ", value: health.schedule },
+    { label: "Ngân sách", value: health.budget },
+    { label: "Rủi ro", value: health.risk },
+  ];
+  return (
+    <Card title="Sức khỏe dự án">
+      <div className="flex items-center gap-4 mb-3">
+        <svg width="92" height="92" viewBox="0 0 92 92" role="img" aria-label="Chỉ số sức khỏe dự án">
+          <circle cx="46" cy="46" r={r} fill="none" stroke="var(--grid)" strokeWidth="9" />
+          <circle
+            cx="46" cy="46" r={r} fill="none"
+            stroke={color} strokeWidth="9" strokeLinecap="round"
+            strokeDasharray={`${(c * health.overall) / 100} ${c}`}
+            transform="rotate(-90 46 46)"
+          />
+        </svg>
+        <div>
+          <div className="text-3xl font-bold">{health.overall}</div>
+          <div className="text-[12.5px] font-semibold mt-1" style={{ color }}>{health.label}</div>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {breakdown.map((b) => (
+          <div key={b.label} className="flex items-center gap-2">
+            <span className="text-[11px] text-muted w-16 shrink-0">{b.label}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-grid overflow-hidden">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${b.value}%`, background: "var(--series-1)" }}
+              />
+            </div>
+            <span className="text-[11px] font-semibold text-ink-2 w-7 text-right">{b.value}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- Vòng tiến độ ---------- */
 export function ProgressGauge({ progress }: { progress: DashboardData["progress"] }) {
   const r = 38;

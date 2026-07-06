@@ -9,11 +9,14 @@ export function PreviewButton({
   mimeType,
   title,
   label = "Xem",
+  children,
 }: {
   url: string;
   mimeType: string | null;
   title: string;
   label?: string;
+  /** Nếu truyền vào, dùng làm phần tử để bấm mở preview thay cho nút text mặc định (vd 1 thumbnail ảnh) */
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const isImage = mimeType?.startsWith("image/");
@@ -24,7 +27,7 @@ export function PreviewButton({
     // Loại file không xem trước được (docx, video lạ...) -> mở tab mới như cũ
     return (
       <a href={url} target="_blank" rel="noreferrer" className="text-brand font-semibold hover:underline text-[13px]">
-        {label} ↗
+        {children ?? `${label} ↗`}
       </a>
     );
   }
@@ -33,9 +36,9 @@ export function PreviewButton({
     <>
       <button
         onClick={() => setOpen(true)}
-        className="text-brand font-semibold hover:underline text-[13px]"
+        className={children ? "" : "text-brand font-semibold hover:underline text-[13px]"}
       >
-        {label} 👁
+        {children ?? `${label} 👁`}
       </button>
       {open && (
         <div

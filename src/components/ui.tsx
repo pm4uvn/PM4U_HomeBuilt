@@ -10,13 +10,15 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={`bg-surface border border-line rounded-xl p-4 ${className}`}>
+    <div className={`bg-surface border border-line rounded-xl p-4 flex flex-col ${className}`}>
       {title && (
         <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted mb-3">
           {title}
         </h2>
       )}
-      {children}
+      {/* Khi Card bị kéo giãn bằng chiều cao 1 thẻ khác cao hơn trong cùng hàng grid (vd Dashboard),
+          nội dung căn giữa theo chiều dọc thay vì dồn lên trên để lại khoảng trống xấu bên dưới */}
+      <div className="flex-1 flex flex-col justify-center">{children}</div>
     </div>
   );
 }

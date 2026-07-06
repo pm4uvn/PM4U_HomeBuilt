@@ -38,6 +38,15 @@ export interface CashflowItem {
   label: string;
 }
 
+export interface HealthScore {
+  overall: number; // 0-100
+  label: string;
+  sev: "good" | "warning" | "critical";
+  schedule: number;
+  budget: number;
+  risk: number;
+}
+
 export interface DashboardData {
   project: { id: string; name: string; status: string };
   progress: { pct: number; lateDays: number; forceMajeureDays: number };
@@ -47,6 +56,48 @@ export interface DashboardData {
   cashflow: CashflowItem[];
   risks: { severity: string; title: string; sub: string }[];
   todayLog: { weather: string; rainHours: number; workerCount: number; isForceMajeure: boolean } | null;
+  healthScore: HealthScore;
+}
+
+const RISK_SEVERITY_WEIGHT: Record<string, number> = { CRITICAL: 20, HIGH: 12, MEDIUM: 6, LOW: 2 };
+const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+/**
+ * Chỉ số sức khỏe dự án — gộp 3 tín hiệu (tiến độ/ngân sách/rủi ro) thành 1 con số 0-100,
+ * để không phải tự nhìn nhiều số rời rạc mới biết dự án đang ổn hay không.
+ */
+function computeHealthScore(params: {
+  lateDays: number;
+  progressPct: number;
+  budget: BudgetSummary;
+  riskCounts: { severity: string; count: number }[];
+}): HealthScore {
+  const scheduleScore = clamp(100 - params.lateDays * 5);
+
+  let budgetScore = 100;
+  if (params.budget.planned > 0) {
+    const spentPct = (params.budget.totalSpent / params.budget.planned) * 100;
+    const paceDelta = spentPct - params.progressPct; // chi nhanh hơn tiến độ đạt được -> xấu
+    if (paceDelta > 0) budgetScore -= paceDelta * 2;
+    if (params.budget.overrun) budgetScore = Math.min(budgetScore, 30); // vượt trần ngân sách -> phạt nặng
+  }
+  budgetScore = clamp(budgetScore);
+
+  const riskPenalty = params.riskCounts.reduce(
+    (s, r) => s + (RISK_SEVERITY_WEIGHT[r.severity] ?? 0) * r.count,
+    0,
+  );
+  const riskScore = clamp(100 - riskPenalty);
+
+  const overall = clamp(scheduleScore * 0.4 + budgetScore * 0.35 + riskScore * 0.25);
+  const { label, sev } =
+    overall >= 80
+      ? { label: "Tốt", sev: "good" as const }
+      : overall >= 50
+        ? { label: "Cần chú ý", sev: "warning" as const }
+        : { label: "Báo động", sev: "critical" as const };
+
+  return { overall, label, sev, schedule: scheduleScore, budget: budgetScore, risk: riskScore };
 }
 
 const ALERT_HREF: Record<string, string> = {
@@ -74,7 +125,7 @@ export async function getDashboardData(projectId: string): Promise<DashboardData
   await refreshOverduePayments(projectId);
   const alerts = await computeAlerts(projectId);
 
-  const [project, pct, budget, phasesRaw, pendingVariations, dueStages, purchases, risksRaw, todayLogRaw, vatTuDuAnAll] =
+  const [project, pct, budget, phasesRaw, pendingVariations, dueStages, purchases, risksRaw, todayLogRaw, vatTuDuAnAll, riskCountsRaw] =
     await Promise.all([
       prisma.project.findUniqueOrThrow({ where: { id: projectId } }),
       getProjectProgress(projectId),
@@ -119,6 +170,12 @@ export async function getDashboardData(projectId: string): Promise<DashboardData
           trangThaiChotMau: true, trangThaiDatHang: true, trangThaiGiaoHang: true, trangThaiThiCong: true,
         },
       }),
+      // Đếm ĐẦY ĐỦ rủi ro theo mức độ (không giới hạn take:5 như risksRaw ở trên) để tính điểm chính xác
+      prisma.riskLog.groupBy({
+        by: ["severity"],
+        where: { projectId, status: { in: ["OPEN", "MONITORING"] } },
+        _count: true,
+      }),
     ]);
 
   // --- Tiến độ: số ngày trễ đã trừ gia hạn mưa bão hợp lệ ---
@@ -130,6 +187,13 @@ export async function getDashboardData(projectId: string): Promise<DashboardData
   if (currentPhase?.plannedEnd && new Date() > currentPhase.plannedEnd) {
     lateDays = Math.max(0, daysBetween(currentPhase.plannedEnd, new Date()) - forceMajeureDays);
   }
+
+  const healthScore = computeHealthScore({
+    lateDays,
+    progressPct: pct,
+    budget,
+    riskCounts: riskCountsRaw.map((r) => ({ severity: r.severity, count: r._count })),
+  });
 
   // --- Action queue: alerts + phát sinh chờ duyệt ---
   const actions: ActionItem[] = [
@@ -244,6 +308,7 @@ export async function getDashboardData(projectId: string): Promise<DashboardData
           isForceMajeure: todayLogRaw.isForceMajeure,
         }
       : null,
+    healthScore,
   };
 }
 

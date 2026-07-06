@@ -1,10 +1,11 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getDashboardData, getDefaultProject } from "@/services/dashboard.service";
 import {
-  ProgressGauge, BudgetCard, ActionQueue, GanttChart,
+  HealthScoreCard, ProgressGauge, BudgetCard, ActionQueue, GanttChart,
   CashflowTable, RiskPanel, DailyStrip,
 } from "@/components/dashboard";
-import { Card } from "@/components/ui";
+import { Card, Button } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -46,9 +47,13 @@ export default async function DashboardPage() {
         <span className="bg-brand text-white text-xs font-semibold px-2.5 py-1 rounded-full">
           {PROJECT_STATUS_LABEL[data.project.status] ?? data.project.status}
         </span>
+        <Link href="/report" className="ml-auto">
+          <Button variant="default">🖨️ Xuất báo cáo</Button>
+        </Link>
       </header>
 
-      <div className="grid grid-cols-[1fr_1fr_1.4fr] gap-3 max-lg:grid-cols-1">
+      <div className="grid grid-cols-[0.9fr_0.9fr_0.9fr_1.3fr] gap-3 max-lg:grid-cols-1">
+        <HealthScoreCard health={data.healthScore} />
         <ProgressGauge progress={data.progress} />
         <BudgetCard budget={data.budget} />
         <ActionQueue actions={data.actions} />

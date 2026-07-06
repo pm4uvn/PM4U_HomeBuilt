@@ -58,3 +58,10 @@ export async function getSignedUrl(path: string): Promise<string | null> {
   const { data } = await client.storage.from(DOCUMENTS_BUCKET).createSignedUrl(path, 3600);
   return data?.signedUrl ?? null;
 }
+
+/** Xóa file khỏi storage — dùng khi xóa 1 Document, tránh để lại file mồ côi trong bucket */
+export async function removeFromStorage(path: string): Promise<void> {
+  const client = getServiceClient();
+  if (!client) return;
+  await client.storage.from(DOCUMENTS_BUCKET).remove([path]);
+}

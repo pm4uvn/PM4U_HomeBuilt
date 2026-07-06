@@ -4,12 +4,13 @@ import { getDefaultProject, type GanttPhase } from "@/services/dashboard.service
 import { resolveExpiredHoldPoints } from "@/services/milestone.service";
 import { Card, Tag, EmptyState } from "@/components/ui";
 import { GanttChart } from "@/components/dashboard";
+import { getSignedUrl } from "@/lib/storage";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { MILESTONE_STATUS, WEATHER, INSPECTION_METHOD, INSPECTION_RESULT } from "@/lib/labels";
 import {
   CreatePhaseForm, UpdatePhaseForm, CreateMilestoneForm, EditMilestoneForm, CreateStandardMilestonesButton,
   CreateFullScheduleButton, ResetScheduleButton, RequestInspectionButton, RecordInspectionForm, DailyLogForm,
-  EditDailyLogForm, DeleteDailyLogButton, DailyLogItemsView,
+  EditDailyLogForm, DeleteDailyLogButton, DailyLogItemsView, DailyLogPhotos,
   ChecklistPanel,
 } from "./forms";
 import { ScheduleTabs } from "./ScheduleTabs";
@@ -55,6 +56,7 @@ export default async function SchedulePage() {
       include: {
         milestones: { select: { id: true, name: true } },
         items: { orderBy: { sortOrder: "asc" } },
+        documents: { where: { docType: "SITE_PHOTO" }, orderBy: { uploadedAt: "asc" } },
       },
     }),
     prisma.checklistTemplate.findMany({
@@ -75,6 +77,18 @@ export default async function SchedulePage() {
   }));
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayLog = dailyLogs.find((d) => d.logDate.toISOString().slice(0, 10) === todayStr);
+
+  // Ảnh hiện trường: tạo signed URL (bucket private) cho mọi ảnh của 14 ngày đang hiện
+  const photosByLog = new Map<string, { id: string; url: string; title: string }[]>();
+  await Promise.all(
+    dailyLogs.map(async (d) => {
+      const urls = await Promise.all(d.documents.map((doc) => getSignedUrl(doc.fileUrl)));
+      photosByLog.set(
+        d.id,
+        d.documents.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title })).filter((p) => p.url),
+      );
+    }),
+  );
 
   const ganttPhases: GanttPhase[] = phases.map((p) => {
     const holdPoint = p.milestones.find((m) => m.isHoldPoint);
@@ -150,6 +164,7 @@ export default async function SchedulePage() {
                         ))}
                       </div>
                     )}
+                    <DailyLogPhotos dailyLogId={d.id} projectId={project.id} photos={photosByLog.get(d.id) ?? []} />
                   </td>
                   <td className="py-2 pr-2">{d.isForceMajeure ? <Tag sev="warning">+1 ngày</Tag> : "—"}</td>
                   <td className="py-2">

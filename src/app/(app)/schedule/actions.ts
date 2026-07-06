@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { requestInspection, recordInspection } from "@/services/milestone.service";
 import { STANDARD_MILESTONES, buildStructureMilestones, spreadDates } from "@/lib/standard-milestones";
 import { getChecklistForMilestoneName } from "@/lib/milestone-checklists";
+import { uploadToStorage, removeFromStorage } from "@/lib/storage";
 import type { PhaseType, InspectionMethod, InspectionResult, Weather } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -410,5 +411,55 @@ export async function toggleDailyLogItem(id: string, isChecked: boolean) {
 export async function deleteDailyLog(id: string) {
   await requireUser();
   await prisma.dailyLog.delete({ where: { id } });
+  revalidate();
+}
+
+export interface UploadPhotosState {
+  error?: string;
+  ok?: boolean;
+}
+
+/** Tải nhiều ảnh hiện trường lên cho 1 ngày nhật ký — bằng chứng tiến độ/chất lượng khi tranh chấp */
+export async function uploadDailyLogPhotos(
+  dailyLogId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa chọn ảnh nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+    }
+
+    for (const file of files) {
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId,
+          docType: "SITE_PHOTO",
+          title: file.name,
+          fileUrl: path,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          dailyLogId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+/** Xóa 1 ảnh hiện trường đã gắn vào nhật ký (xóa cả file trong storage, tránh mồ côi) */
+export async function deleteDailyLogPhoto(id: string) {
+  await requireUser();
+  const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
+  await prisma.document.delete({ where: { id } });
+  await removeFromStorage(doc.fileUrl);
   revalidate();
 }
