@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import type { RiskCategory, RiskSeverity, RiskStatus, IdleCause } from "@prisma/client";
+import type { RiskCategory, RiskSeverity, RiskStatus, RiskProbability, RiskResponseStrategy, IdleCause } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const numOrNull = (fd: FormData, k: string) => {
@@ -27,10 +27,69 @@ export async function createRisk(projectId: string, fd: FormData) {
       category: str(fd, "category") as RiskCategory,
       title: str(fd, "title"),
       description: str(fd, "description") || null,
+      probability: (str(fd, "probability") || "MEDIUM") as RiskProbability,
       severity: str(fd, "severity") as RiskSeverity,
+      responseStrategy: (str(fd, "responseStrategy") || "MITIGATE") as RiskResponseStrategy,
+      owner: str(fd, "owner") || null,
       estimatedCostImpact: numOrNull(fd, "estimatedCostImpact"),
       mitigationPlan: str(fd, "mitigationPlan") || null,
     },
+  });
+  revalidate();
+}
+
+export async function updateRisk(riskId: string, fd: FormData) {
+  await requireUser();
+  await prisma.riskLog.update({
+    where: { id: riskId },
+    data: {
+      category: str(fd, "category") as RiskCategory,
+      title: str(fd, "title"),
+      description: str(fd, "description") || null,
+      probability: str(fd, "probability") as RiskProbability,
+      severity: str(fd, "severity") as RiskSeverity,
+      responseStrategy: str(fd, "responseStrategy") as RiskResponseStrategy,
+      owner: str(fd, "owner") || null,
+      estimatedCostImpact: numOrNull(fd, "estimatedCostImpact"),
+      actualCostImpact: numOrNull(fd, "actualCostImpact"),
+      mitigationPlan: str(fd, "mitigationPlan") || null,
+    },
+  });
+  revalidate();
+}
+
+export async function deleteRisk(riskId: string) {
+  await requireUser();
+  await prisma.riskLog.delete({ where: { id: riskId } });
+  revalidate();
+}
+
+export async function addRiskFromTemplate(
+  projectId: string,
+  data: { title: string; category: RiskCategory; severity: RiskSeverity; description: string; mitigationActions: string[] },
+) {
+  await requireUser();
+  await prisma.riskLog.create({
+    data: {
+      projectId,
+      category: data.category,
+      title: data.title,
+      description: data.description,
+      severity: data.severity,
+      mitigationActions: {
+        create: data.mitigationActions.map((label, i) => ({ label, sortOrder: i })),
+      },
+    },
+  });
+  revalidate();
+}
+
+/** Tick nhanh 1 hoạt động giảm thiểu rủi ro — như checklist nhật ký */
+export async function toggleRiskMitigationAction(id: string, isDone: boolean) {
+  await requireUser();
+  await prisma.riskMitigationAction.update({
+    where: { id },
+    data: { isDone, doneAt: isDone ? new Date() : null },
   });
   revalidate();
 }

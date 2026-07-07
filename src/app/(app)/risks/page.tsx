@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
 import { Card, Tag, EmptyState } from "@/components/ui";
 import { fmtVND, fmtDate, daysBetween } from "@/lib/format";
-import { RISK_CATEGORY, RISK_SEVERITY, IDLE_CAUSE } from "@/lib/labels";
+import { RISK_CATEGORY, RISK_SEVERITY, RISK_PROBABILITY, RISK_RESPONSE_STRATEGY, IDLE_CAUSE } from "@/lib/labels";
 import {
-  CreateRiskForm, RiskStatusSelect, CreateNeighborSurveyForm,
-  StartIdleWaitForm, StopIdleWaitButton, CreatePilingRecordForm, AddPileItemForm,
+  CreateRiskForm, EditRiskForm, DeleteRiskButton, RiskStatusSelect, CreateNeighborSurveyForm,
+  StartIdleWaitForm, StopIdleWaitButton, CreatePilingRecordForm, AddPileItemForm, PileTableToggle,
+  RiskTemplateLibrary, ActionMenu, RiskMitigationChecklist,
 } from "./forms";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ export default async function RisksPage() {
   const [risks, surveys, idleLogs, pilingRecords, contracts] = await Promise.all([
     prisma.riskLog.findMany({
       where: { projectId: project.id },
+      include: { mitigationActions: { orderBy: { sortOrder: "asc" } } },
       orderBy: [{ status: "asc" }, { severity: "desc" }],
     }),
     prisma.neighborSurvey.findMany({ where: { projectId: project.id }, orderBy: { surveyDate: "desc" } }),
@@ -47,16 +49,20 @@ export default async function RisksPage() {
       <header className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">⚠️ Quản lý rủi ro</h1>
         <div className="ml-auto flex gap-2 flex-wrap">
-          <CreateNeighborSurveyForm projectId={project.id} />
-          {contracts.length > 0 && (
-            <StartIdleWaitForm
-              contracts={contracts.map((c) => ({ id: c.id, label: `${c.code} — ${c.vendor.name}` }))}
-            />
-          )}
-          <CreatePilingRecordForm projectId={project.id} />
+          <ActionMenu label="+ Ghi nhận khác">
+            <CreateNeighborSurveyForm projectId={project.id} />
+            {contracts.length > 0 && (
+              <StartIdleWaitForm
+                contracts={contracts.map((c) => ({ id: c.id, label: `${c.code} — ${c.vendor.name}` }))}
+              />
+            )}
+            <CreatePilingRecordForm projectId={project.id} />
+          </ActionMenu>
           <CreateRiskForm projectId={project.id} />
         </div>
       </header>
+
+      <RiskTemplateLibrary projectId={project.id} existingTitles={risks.map((r) => r.title)} />
 
       {/* Sổ rủi ro */}
       <Card title={`Sổ rủi ro (${risks.length})`}>
@@ -72,13 +78,47 @@ export default async function RisksPage() {
                     <Tag sev={SEV_TAG[r.severity]}>{RISK_SEVERITY[r.severity]}</Tag>
                     <span className="text-xs text-muted font-normal">{RISK_CATEGORY[r.category]}</span>
                   </div>
+                  <div className="text-xs text-muted mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>Xác suất: <b className="text-ink-2">{RISK_PROBABILITY[r.probability]}</b></span>
+                    <span>· Ứng phó: <b className="text-ink-2">{RISK_RESPONSE_STRATEGY[r.responseStrategy]}</b></span>
+                    {r.owner && <span>· Phụ trách: <b className="text-ink-2">{r.owner}</b></span>}
+                  </div>
                   {r.description && <div className="text-[12.5px] text-ink-2 mt-0.5">{r.description}</div>}
                   <div className="text-xs text-muted mt-0.5">
-                    {r.estimatedCostImpact != null && <>Ước tính ảnh hưởng: <b>{fmtVND(Number(r.estimatedCostImpact))}</b> · </>}
-                    {r.mitigationPlan && <>Xử lý: {r.mitigationPlan}</>}
+                    {r.estimatedCostImpact != null && <>Ước tính ảnh hưởng: <b>{fmtVND(Number(r.estimatedCostImpact))}</b></>}
+                    {r.actualCostImpact != null && <> · Thực tế: <b style={{ color: "var(--critical)" }}>{fmtVND(Number(r.actualCostImpact))}</b></>}
+                  </div>
+                  {r.mitigationActions.length > 0 ? (
+                    <RiskMitigationChecklist
+                      actions={r.mitigationActions.map((a) => ({ id: a.id, label: a.label, isDone: a.isDone }))}
+                    />
+                  ) : (
+                    r.mitigationPlan && (
+                      <div className="text-xs text-muted mt-0.5 whitespace-pre-wrap">Xử lý: {r.mitigationPlan}</div>
+                    )
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <RiskStatusSelect riskId={r.id} current={r.status} />
+                  <div className="flex gap-1.5">
+                    <EditRiskForm
+                      risk={{
+                        id: r.id,
+                        category: r.category,
+                        title: r.title,
+                        description: r.description,
+                        probability: r.probability,
+                        severity: r.severity,
+                        responseStrategy: r.responseStrategy,
+                        owner: r.owner,
+                        estimatedCostImpact: r.estimatedCostImpact != null ? Number(r.estimatedCostImpact) : null,
+                        actualCostImpact: r.actualCostImpact != null ? Number(r.actualCostImpact) : null,
+                        mitigationPlan: r.mitigationPlan,
+                      }}
+                    />
+                    <DeleteRiskButton riskId={r.id} title={r.title} />
                   </div>
                 </div>
-                <RiskStatusSelect riskId={r.id} current={r.status} />
               </div>
             ))}
           </div>
@@ -173,32 +213,16 @@ export default async function RisksPage() {
                 />
               </span>
             </div>
-            {rec.piles.length > 0 && (
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-[11px] text-muted border-b border-grid">
-                    <th className="py-1 pr-2 font-semibold">Cọc</th>
-                    <th className="py-1 pr-2 font-semibold text-right">Dài đặt (m)</th>
-                    <th className="py-1 pr-2 font-semibold text-right">Sâu thực tế (m)</th>
-                    <th className="py-1 pr-2 font-semibold text-right">Dư (m)</th>
-                    <th className="py-1 font-semibold">Ngày ép</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rec.piles.map((p) => (
-                    <tr key={p.id} className="border-b border-grid last:border-0 text-[13px]">
-                      <td className="py-1.5 pr-2 font-semibold">#{p.pileNo}</td>
-                      <td className="py-1.5 pr-2 text-right money">{Number(p.plannedLength)}</td>
-                      <td className="py-1.5 pr-2 text-right money">{p.actualDepth != null ? Number(p.actualDepth) : "—"}</td>
-                      <td className="py-1.5 pr-2 text-right money" style={{ color: Number(p.cutOffLength ?? 0) > 0 ? "var(--critical)" : undefined }}>
-                        {p.cutOffLength != null ? Number(p.cutOffLength).toFixed(1) : "—"}
-                      </td>
-                      <td className="py-1.5 money">{fmtDate(p.pressedAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+            <PileTableToggle
+              piles={rec.piles.map((p) => ({
+                id: p.id,
+                pileNo: p.pileNo,
+                plannedLength: Number(p.plannedLength),
+                actualDepth: p.actualDepth != null ? Number(p.actualDepth) : null,
+                cutOffLength: p.cutOffLength != null ? Number(p.cutOffLength) : null,
+                pressedAt: p.pressedAt?.toISOString() ?? null,
+              }))}
+            />
           </Card>
         );
       })}

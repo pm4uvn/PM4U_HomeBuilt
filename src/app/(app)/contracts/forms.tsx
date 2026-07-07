@@ -2,14 +2,16 @@
 
 /* Forms client — Module 1. Mỗi form là 1 modal gọi server action tương ứng. */
 
-import { useState, useActionState } from "react";
+import { Fragment, useState, useActionState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ModalButton } from "@/components/Modal";
-import { Button, Field, Input, Select, Textarea } from "@/components/ui";
+import { Button, Field, Input, Select, Textarea, Tag } from "@/components/ui";
 import { BankNameInput } from "@/components/BankNameInput";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtVND } from "@/lib/format";
 import {
-  VENDOR_TYPE, PENALTY_TYPE, PENALTY_BASIS, DISCOUNT_TYPE, VARIATION_REASON, DOC_TYPE,
+  VENDOR_TYPE, PENALTY_TYPE, PENALTY_BASIS, DISCOUNT_TYPE, VARIATION_REASON, DOC_TYPE, PAYMENT_STATUS,
+  CONTRACT_STATUS,
 } from "@/lib/labels";
 import {
   createProject, createVendor, updateVendor, deleteVendor, createContract, updateContract, deleteContract,
@@ -1002,5 +1004,148 @@ function UploadForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+export type ContractPaymentStageRow = {
+  id: string;
+  stageNo: number;
+  name: string;
+  gross: number;
+  dueDate: string | null;
+  status: string;
+  paidAmount: number | null;
+};
+
+const STAGE_SEV: Record<string, "good" | "warning" | "critical" | "neutral"> = {
+  PAID: "good",
+  PARTIAL: "warning",
+  DUE: "warning",
+  OVERDUE: "critical",
+  UPCOMING: "neutral",
+};
+
+const CONTRACT_STATUS_SEV: Record<string, "good" | "warning" | "critical" | "neutral"> = {
+  DRAFT: "neutral", SIGNED: "warning", IN_PROGRESS: "good",
+  COMPLETED: "neutral", TERMINATED: "critical",
+};
+
+export type ContractListRow = {
+  id: string;
+  vendorId: string;
+  code: string;
+  title: string;
+  vendorName: string;
+  vendorType: string;
+  contractValue: number;
+  vatRate: number;
+  retentionPct: number;
+  valueWithVat: number;
+  totalPaid: number;
+  paidStagesCount: number;
+  totalStagesCount: number;
+  signedDate: string | null;
+  startDate: string | null;
+  plannedEndDate: string | null;
+  status: string;
+  stages: ContractPaymentStageRow[];
+};
+
+const CONTRACT_ROW_COLS = 8;
+
+/** 1 dòng hợp đồng trong bảng danh sách; khi xổ "Các đợt" thì thêm 1 dòng riêng trải hết bảng bên dưới, không nhét vào 1 ô */
+export function ContractRow({
+  c,
+  vendors,
+}: {
+  c: ContractListRow;
+  vendors: { id: string; name: string; type: string }[];
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Fragment>
+      <tr className="border-b border-grid last:border-0 text-[13px] hover:bg-page">
+        <td className="py-2.5 pr-2">
+          <Link href={`/contracts/${c.id}`} className="font-semibold text-brand hover:underline">
+            {c.code}
+          </Link>
+          <div className="text-muted text-xs">{c.title}</div>
+        </td>
+        <td className="py-2.5 pr-2">
+          {c.vendorName}
+          <div className="text-muted text-xs">{VENDOR_TYPE[c.vendorType]}</div>
+        </td>
+        <td className="py-2.5 pr-2 text-right money font-bold">
+          {fmtVND(Math.round(c.valueWithVat))}
+          <div className="text-muted text-xs font-normal">
+            ({fmtVND(c.contractValue)} + VAT {c.vatRate}%)
+          </div>
+        </td>
+        <td className="py-2.5 pr-2 text-right money font-bold">
+          {fmtVND(c.totalPaid)}
+          <div className="text-muted text-xs font-normal">
+            {c.paidStagesCount}/{c.totalStagesCount} đợt đã trả đủ
+          </div>
+        </td>
+        <td className="py-2.5 pr-2">
+          {c.stages.length === 0 ? (
+            <span className="text-muted text-xs">—</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="text-brand text-xs font-semibold whitespace-nowrap"
+            >
+              {open ? "▲ Ẩn đợt" : `▾ Xem ${c.stages.length} đợt`}
+            </button>
+          )}
+        </td>
+        <td className="py-2.5 pr-2 money">{fmtDate(c.plannedEndDate)}</td>
+        <td className="py-2.5 pr-2"><Tag sev={CONTRACT_STATUS_SEV[c.status]}>{CONTRACT_STATUS[c.status]}</Tag></td>
+        <td className="py-2.5 text-right">
+          <EditContractForm
+            contract={{
+              id: c.id,
+              vendorId: c.vendorId,
+              code: c.code,
+              title: c.title,
+              status: c.status,
+              contractValue: c.contractValue,
+              vatRate: c.vatRate,
+              retentionPct: c.retentionPct,
+              signedDate: c.signedDate,
+              startDate: c.startDate,
+              plannedEndDate: c.plannedEndDate,
+            }}
+            vendors={vendors}
+          />
+        </td>
+      </tr>
+      {open && (
+        <tr className="border-b border-grid last:border-0 bg-page/60">
+          <td colSpan={CONTRACT_ROW_COLS} className="py-2.5 px-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {c.stages.map((s) => (
+                <div
+                  key={s.id}
+                  className="border border-line rounded-lg bg-surface px-3 py-2 text-[12px] space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-ink-2">Đợt {s.stageNo}: {s.name}</span>
+                    <Tag sev={STAGE_SEV[s.status] ?? "neutral"}>{PAYMENT_STATUS[s.status] ?? s.status}</Tag>
+                  </div>
+                  {s.dueDate && <div className="text-muted">Hạn: {fmtDate(s.dueDate)}</div>}
+                  <div className="money font-semibold">
+                    {s.paidAmount ? fmtVND(s.paidAmount) : "0₫"}{" "}
+                    <span className="text-muted font-normal">/ {fmtVND(s.gross)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
   );
 }

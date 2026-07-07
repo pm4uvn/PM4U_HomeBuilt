@@ -1,20 +1,15 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
-import { Card, Tag, EmptyState } from "@/components/ui";
-import { fmtVND, fmtDate } from "@/lib/format";
-import { VENDOR_TYPE, CONTRACT_STATUS } from "@/lib/labels";
+import { Card, EmptyState } from "@/components/ui";
+import { computeStageGrossAmount } from "@/lib/payment-calc";
+import { VENDOR_TYPE } from "@/lib/labels";
 import {
-  CreateProjectForm, CreateVendorForm, EditVendorForm, CreateContractForm, EditContractForm,
+  CreateProjectForm, CreateVendorForm, EditVendorForm, CreateContractForm,
+  ContractRow,
 } from "./forms";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_SEV: Record<string, "good" | "warning" | "critical" | "neutral"> = {
-  DRAFT: "neutral", SIGNED: "warning", IN_PROGRESS: "good",
-  COMPLETED: "neutral", TERMINATED: "critical",
-};
 
 export default async function ContractsPage() {
   await requireUser();
@@ -91,7 +86,8 @@ export default async function ContractsPage() {
                 <th className="py-1 pr-2 font-semibold">Số HĐ</th>
                 <th className="py-1 pr-2 font-semibold">Nhà thầu</th>
                 <th className="py-1 pr-2 font-semibold text-right">Giá trị (gồm VAT)</th>
-                <th className="py-1 pr-2 font-semibold">Thanh toán</th>
+                <th className="py-1 pr-2 font-semibold text-right">Đã thanh toán</th>
+                <th className="py-1 pr-2 font-semibold">Các đợt</th>
                 <th className="py-1 pr-2 font-semibold">Hoàn thành</th>
                 <th className="py-1 pr-2 font-semibold">Trạng thái</th>
                 <th className="py-1 font-semibold"></th>
@@ -99,48 +95,50 @@ export default async function ContractsPage() {
             </thead>
             <tbody>
               {contracts.map((c) => {
-                const paid = c.paymentStages.filter((s) => s.status === "PAID").length;
                 const valueWithVat = Number(c.contractValue) * (1 + Number(c.vatRate) / 100);
+                const totalPaid = c.paymentStages.reduce((s, st) => s + Number(st.paidAmount ?? 0), 0);
+                const stages = c.paymentStages
+                  .sort((a, b) => a.stageNo - b.stageNo)
+                  .map((s) => ({
+                    id: s.id,
+                    stageNo: s.stageNo,
+                    name: s.name,
+                    gross: computeStageGrossAmount({
+                      contractValue: Number(c.contractValue),
+                      vatRate: Number(c.vatRate),
+                      retentionPct: Number(c.retentionPct),
+                      percent: Number(s.percent),
+                      isFinal: s.isFinal,
+                    }),
+                    dueDate: s.dueDate?.toISOString() ?? null,
+                    status: s.status,
+                    paidAmount: s.paidAmount ? Number(s.paidAmount) : null,
+                  }));
                 return (
-                  <tr key={c.id} className="border-b border-grid last:border-0 text-[13px] hover:bg-page">
-                    <td className="py-2.5 pr-2">
-                      <Link href={`/contracts/${c.id}`} className="font-semibold text-brand hover:underline">
-                        {c.code}
-                      </Link>
-                      <div className="text-muted text-xs">{c.title}</div>
-                    </td>
-                    <td className="py-2.5 pr-2">
-                      {c.vendor.name}
-                      <div className="text-muted text-xs">{VENDOR_TYPE[c.vendor.type]}</div>
-                    </td>
-                    <td className="py-2.5 pr-2 text-right money font-bold">
-                      {fmtVND(Math.round(valueWithVat))}
-                      <div className="text-muted text-xs font-normal">
-                        ({fmtVND(Number(c.contractValue))} + VAT {Number(c.vatRate)}%)
-                      </div>
-                    </td>
-                    <td className="py-2.5 pr-2">{paid}/{c.paymentStages.length} đợt</td>
-                    <td className="py-2.5 pr-2 money">{fmtDate(c.plannedEndDate)}</td>
-                    <td className="py-2.5 pr-2"><Tag sev={STATUS_SEV[c.status]}>{CONTRACT_STATUS[c.status]}</Tag></td>
-                    <td className="py-2.5 text-right">
-                      <EditContractForm
-                        contract={{
-                          id: c.id,
-                          vendorId: c.vendorId,
-                          code: c.code,
-                          title: c.title,
-                          status: c.status,
-                          contractValue: Number(c.contractValue),
-                          vatRate: Number(c.vatRate),
-                          retentionPct: Number(c.retentionPct),
-                          signedDate: c.signedDate?.toISOString() ?? null,
-                          startDate: c.startDate?.toISOString() ?? null,
-                          plannedEndDate: c.plannedEndDate?.toISOString() ?? null,
-                        }}
-                        vendors={vendors.map((v) => ({ id: v.id, name: v.name, type: v.type }))}
-                      />
-                    </td>
-                  </tr>
+                  <ContractRow
+                    key={c.id}
+                    c={{
+                      id: c.id,
+                      vendorId: c.vendorId,
+                      code: c.code,
+                      title: c.title,
+                      vendorName: c.vendor.name,
+                      vendorType: c.vendor.type,
+                      contractValue: Number(c.contractValue),
+                      vatRate: Number(c.vatRate),
+                      retentionPct: Number(c.retentionPct),
+                      valueWithVat,
+                      totalPaid,
+                      paidStagesCount: c.paymentStages.filter((s) => s.status === "PAID").length,
+                      totalStagesCount: c.paymentStages.length,
+                      signedDate: c.signedDate?.toISOString() ?? null,
+                      startDate: c.startDate?.toISOString() ?? null,
+                      plannedEndDate: c.plannedEndDate?.toISOString() ?? null,
+                      status: c.status,
+                      stages,
+                    }}
+                    vendors={vendors.map((v) => ({ id: v.id, name: v.name, type: v.type }))}
+                  />
                 );
               })}
             </tbody>

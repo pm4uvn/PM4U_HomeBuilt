@@ -579,23 +579,44 @@ model RiskLog {
   category            RiskCategory
   title               String
   description         String?
-  severity            RiskSeverity @default(MEDIUM)
+  probability         RiskProbability @default(MEDIUM)
+  severity            RiskSeverity @default(MEDIUM) // = mức độ ảnh hưởng (impact)
+  responseStrategy    RiskResponseStrategy @default(MITIGATE)
+  owner               String? // người phụ trách theo dõi/xử lý rủi ro
   status              RiskStatus   @default(OPEN)
   estimatedCostImpact Decimal?     @db.Decimal(18, 0)
   actualCostImpact    Decimal?     @db.Decimal(18, 0)
   mitigationPlan      String?
+  mitigationActions   RiskMitigationAction[]
   documents           Document[]
   idleWaitLogs        IdleWaitLog[]
   createdAt           DateTime @default(now())
   closedAt            DateTime?
 }
 
+model RiskMitigationAction {
+  id        String    @id @default(cuid())
+  riskId    String
+  risk      RiskLog   @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  label     String
+  isDone    Boolean   @default(false)
+  doneAt    DateTime?
+  sortOrder Int       @default(0)
+}
+
 enum RiskCategory {
-  NEIGHBOR_SETTLEMENT_CRACK // lún nứt nhà hàng xóm
-  UNDERGROUND_OBSTACLE      // móng cũ, ống nước, cáp điện ngầm
-  OWNER_CAUSED_IDLE         // chờ việc do lỗi CĐT
-  PILE_QUANTITY_VARIANCE    // chênh lệch cọc ép thử vs đại trà
-  LEGAL_PERMIT
+  DESIGN_TECHNICAL           // thiết kế / kỹ thuật
+  LEGAL_PERMIT               // pháp lý / giấy phép
+  CONTRACTOR_VENDOR          // nhà thầu / nhà cung cấp
+  QUALITY                    // chất lượng thi công
+  SAFETY                     // an toàn lao động
+  SCHEDULE                   // tiến độ
+  COST                       // chi phí / ngân sách
+  NEIGHBOR_SETTLEMENT_CRACK  // lún nứt nhà hàng xóm
+  UNDERGROUND_OBSTACLE       // móng cũ, ống nước, cáp điện ngầm, địa chất
+  PILE_QUANTITY_VARIANCE     // chênh lệch cọc ép thử vs đại trà
+  OWNER_CAUSED_IDLE          // chờ việc do lỗi CĐT
+  WEATHER                    // thời tiết
   OTHER
 }
 
@@ -604,6 +625,20 @@ enum RiskSeverity {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+enum RiskProbability {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// 4 chiến lược ứng phó rủi ro chuẩn PMI (PMBOK)
+enum RiskResponseStrategy {
+  AVOID     // Né tránh — loại bỏ nguyên nhân gây rủi ro
+  MITIGATE  // Giảm thiểu — giảm xác suất/mức độ ảnh hưởng
+  TRANSFER  // Chuyển giao — bảo hiểm, chuyển cho nhà thầu/bên thứ 3
+  ACCEPT    // Chấp nhận — theo dõi, không hành động thêm
 }
 
 enum RiskStatus {

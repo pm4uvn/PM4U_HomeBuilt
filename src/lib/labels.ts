@@ -123,11 +123,18 @@ export const WEATHER: Record<string, string> = {
 };
 
 export const RISK_CATEGORY: Record<string, string> = {
-  NEIGHBOR_SETTLEMENT_CRACK: "Lún nứt nhà hàng xóm",
-  UNDERGROUND_OBSTACLE: "Chướng ngại vật ngầm",
-  OWNER_CAUSED_IDLE: "Chờ việc do lỗi CĐT",
-  PILE_QUANTITY_VARIANCE: "Chênh lệch khối lượng cọc",
+  DESIGN_TECHNICAL: "Thiết kế / kỹ thuật",
   LEGAL_PERMIT: "Pháp lý / giấy phép",
+  CONTRACTOR_VENDOR: "Nhà thầu / nhà cung cấp",
+  QUALITY: "Chất lượng thi công",
+  SAFETY: "An toàn lao động",
+  SCHEDULE: "Tiến độ",
+  COST: "Chi phí / ngân sách",
+  NEIGHBOR_SETTLEMENT_CRACK: "Lún nứt nhà hàng xóm",
+  UNDERGROUND_OBSTACLE: "Chướng ngại vật ngầm / địa chất",
+  PILE_QUANTITY_VARIANCE: "Chênh lệch khối lượng cọc",
+  OWNER_CAUSED_IDLE: "Chờ việc do lỗi CĐT",
+  WEATHER: "Thời tiết",
   OTHER: "Khác",
 };
 
@@ -143,6 +150,19 @@ export const RISK_STATUS: Record<string, string> = {
   MONITORING: "Theo dõi",
   MITIGATED: "Đã giảm thiểu",
   CLOSED: "Đã đóng",
+};
+
+export const RISK_PROBABILITY: Record<string, string> = {
+  LOW: "Thấp",
+  MEDIUM: "Trung bình",
+  HIGH: "Cao",
+};
+
+export const RISK_RESPONSE_STRATEGY: Record<string, string> = {
+  AVOID: "Né tránh",
+  MITIGATE: "Giảm thiểu",
+  TRANSFER: "Chuyển giao",
+  ACCEPT: "Chấp nhận",
 };
 
 export const IDLE_CAUSE: Record<string, string> = {

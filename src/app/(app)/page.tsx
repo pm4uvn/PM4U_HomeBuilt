@@ -52,12 +52,13 @@ export default async function DashboardPage() {
         </Link>
       </header>
 
-      <div className="grid grid-cols-[0.9fr_0.9fr_0.9fr_1.3fr] gap-3 max-lg:grid-cols-1">
+      <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
         <HealthScoreCard health={data.healthScore} />
         <ProgressGauge progress={data.progress} />
         <BudgetCard budget={data.budget} />
-        <ActionQueue actions={data.actions} />
       </div>
+
+      <ActionQueue actions={data.actions} />
 
       <GanttChart phases={data.phases} />
 

@@ -143,7 +143,7 @@ export function ActionQueue({ actions }: { actions: DashboardData["actions"] }) 
       {actions.length === 0 ? (
         <EmptyState title="Không có việc nào chờ bạn" sub="Mọi thứ đang trong tầm kiểm soát 👍" />
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           {actions.slice(0, 5).map((a, i) => (
             <Link
               key={i}

@@ -4,14 +4,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+// Sắp theo luồng quản lý dự án: Tổng quan -> Khởi tạo -> Hợp đồng -> Thực thi (Tiến độ/Vật tư)
+// -> Tài chính (Dòng tiền/Tài khoản) -> Giám sát rủi ro -> Hồ sơ tham chiếu
 const NAV = [
   { href: "/", label: "Tổng quan", icon: "🏠" },
   { href: "/charter", label: "Khởi tạo", icon: "📜" },
   { href: "/contracts", label: "Hợp đồng", icon: "📋" },
-  { href: "/cashflow", label: "Dòng tiền", icon: "💰" },
-  { href: "/accounts", label: "Tài khoản", icon: "🏦" },
   { href: "/schedule", label: "Tiến độ", icon: "📅" },
   { href: "/materials", label: "Vật tư", icon: "🧱" },
+  { href: "/cashflow", label: "Dòng tiền", icon: "💰" },
+  { href: "/accounts", label: "Tài khoản", icon: "🏦" },
   { href: "/risks", label: "Rủi ro", icon: "⚠️" },
   { href: "/documents", label: "Hồ sơ", icon: "📁" },
 ];
