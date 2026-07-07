@@ -109,6 +109,7 @@ export default async function CashflowPage() {
         {stages.length === 0 ? (
           <EmptyState title="Chưa có đợt thanh toán nào" sub="Cấu hình trong chi tiết từng hợp đồng" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -172,6 +173,7 @@ export default async function CashflowPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
@@ -180,6 +182,7 @@ export default async function CashflowPage() {
         {purchases.length === 0 ? (
           <EmptyState title="Chưa có hạng mục nào" sub="Gạch ốp lát, thiết bị vệ sinh, điện máy, nội thất rời…" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -217,6 +220,7 @@ export default async function CashflowPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
@@ -225,6 +229,7 @@ export default async function CashflowPage() {
         {vatTuDuAnList.length === 0 ? (
           <EmptyState title="Chưa có vật tư nào trong dự án" sub="Thêm ở trang Vật tư" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -271,6 +276,7 @@ export default async function CashflowPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
         <p className="text-xs text-muted mt-3 pt-3 border-t border-grid">
           Xem/sửa chi tiết khối lượng, đơn giá, trạng thái từng vật tư ở{" "}

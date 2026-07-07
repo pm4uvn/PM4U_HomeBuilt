@@ -49,13 +49,13 @@ export function CreateRiskForm({ projectId }: { projectId: string }) {
     <ModalButton label="+ Rủi ro" title="Ghi nhận rủi ro">
       {(close) => (
         <form action={async (fd) => { await createRisk(projectId, fd); close(); }} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm rủi ro *"><Select name="category" required>{opts(RISK_CATEGORY)}</Select></Field>
             <Field label="Người phụ trách"><Input name="owner" placeholder="CĐT / Giám sát / Nhà thầu X" /></Field>
           </div>
           <Field label="Tiêu đề *"><Input name="title" required placeholder="Đụng ống nước ngầm khi đào móng" /></Field>
           <Field label="Mô tả"><Textarea name="description" rows={2} /></Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Xác suất"><Select name="probability" defaultValue="MEDIUM">{opts(RISK_PROBABILITY)}</Select></Field>
             <Field label="Mức ảnh hưởng"><Select name="severity" defaultValue="MEDIUM">{opts(RISK_SEVERITY)}</Select></Field>
             <Field label="Chiến lược ứng phó"><Select name="responseStrategy" defaultValue="MITIGATE">{opts(RISK_RESPONSE_STRATEGY)}</Select></Field>
@@ -88,7 +88,7 @@ export function EditRiskForm({ risk }: { risk: RiskEditRow }) {
     <ModalButton label="Sửa" title={`Sửa rủi ro — ${risk.title}`} variant="default">
       {(close) => (
         <form action={async (fd) => { await updateRisk(risk.id, fd); close(); }} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm rủi ro *">
               <Select name="category" required defaultValue={risk.category}>{opts(RISK_CATEGORY)}</Select>
             </Field>
@@ -98,7 +98,7 @@ export function EditRiskForm({ risk }: { risk: RiskEditRow }) {
           </div>
           <Field label="Tiêu đề *"><Input name="title" required defaultValue={risk.title} /></Field>
           <Field label="Mô tả"><Textarea name="description" rows={2} defaultValue={risk.description ?? ""} /></Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Xác suất">
               <Select name="probability" defaultValue={risk.probability}>{opts(RISK_PROBABILITY)}</Select>
             </Field>
@@ -109,7 +109,7 @@ export function EditRiskForm({ risk }: { risk: RiskEditRow }) {
               <Select name="responseStrategy" defaultValue={risk.responseStrategy}>{opts(RISK_RESPONSE_STRATEGY)}</Select>
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Ước tính chi phí ảnh hưởng (VND)">
               <Input name="estimatedCostImpact" inputMode="numeric" defaultValue={risk.estimatedCostImpact ?? ""} />
             </Field>
@@ -277,7 +277,7 @@ export function CreateNeighborSurveyForm({ projectId }: { projectId: string }) {
       {(close) => (
         <form action={async (fd) => { await createNeighborSurvey(projectId, fd); close(); }} className="space-y-3">
           <Field label="Địa chỉ nhà lân cận *"><Input name="neighborAddress" required placeholder="Nhà bên trái — 123/4 đường X" /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Chủ nhà"><Input name="neighborName" /></Field>
             <Field label="SĐT"><Input name="neighborPhone" /></Field>
           </div>
@@ -311,7 +311,7 @@ export function StartIdleWaitForm({
             </Select>
           </Field>
           <Field label="Nguyên nhân"><Select name="cause">{opts(IDLE_CAUSE)}</Select></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Từ ngày"><Input name="startDate" type="date" /></Field>
             <Field label="Phạt/ngày (VND) *"><Input name="dailyPenalty" required inputMode="numeric" defaultValue="4000000" /></Field>
           </div>
@@ -336,11 +336,11 @@ export function CreatePilingRecordForm({ projectId }: { projectId: string }) {
     <ModalButton label="+ Hồ sơ ép cọc" title="Tạo hồ sơ đối soát cọc ép" variant="default">
       {(close) => (
         <form action={async (fd) => { await createPilingRecord(projectId, fd); close(); }} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Số cọc ép thử *"><Input name="testPileCount" type="number" required defaultValue="2" /></Field>
             <Field label="Độ sâu TB cọc thử (m) *"><Input name="testPileAvgDepth" required inputMode="decimal" placeholder="18" /></Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Chiều dài cọc đặt hàng (m) *"><Input name="designPileLength" required inputMode="decimal" placeholder="18" /></Field>
             <Field label="Đơn giá / mét (VND) *"><Input name="unitPricePerMeter" required inputMode="numeric" placeholder="250000" /></Field>
           </div>
@@ -372,6 +372,7 @@ export function PileTableToggle({ piles }: { piles: PileRow[] }) {
         {open ? "▲ Thu gọn" : `▾ Xem chi tiết từng cọc (${piles.length})`}
       </button>
       {open && (
+        <div className="overflow-x-auto">
         <table className="w-full mt-2">
           <thead>
             <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -399,6 +400,7 @@ export function PileTableToggle({ piles }: { piles: PileRow[] }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
@@ -409,7 +411,7 @@ export function AddPileItemForm({ pilingRecordId, nextPileNo, designLength }: { 
     <ModalButton label="+ Cọc" title="Ghi nhận cọc ép" variant="default">
       {(close) => (
         <form action={async (fd) => { await addPileItem(pilingRecordId, fd); close(); }} className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Cọc số *"><Input name="pileNo" type="number" required defaultValue={String(nextPileNo)} /></Field>
             <Field label="Dài đặt hàng (m)"><Input name="plannedLength" inputMode="decimal" defaultValue={String(designLength)} /></Field>
             <Field label="Độ sâu ép thực tế (m)"><Input name="actualDepth" inputMode="decimal" placeholder="15.2" /></Field>

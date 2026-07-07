@@ -41,7 +41,7 @@ export function CreateProjectForm() {
           <Field label="Tên dự án *"><Input name="name" required placeholder="Nhà phố Q.7 — 1 trệt 3 lầu" /></Field>
           <Field label="Địa chỉ *"><Input name="address" required /></Field>
           <Field label="Tổng ngân sách dự kiến (VND) *"><Input name="budgetPlanned" required inputMode="numeric" placeholder="3500000000" /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="DT đất (m²)"><Input name="landArea" inputMode="decimal" /></Field>
             <Field label="DT sàn XD (m²)"><Input name="grossFloorArea" inputMode="decimal" /></Field>
           </div>
@@ -120,7 +120,7 @@ export function CreateVendorForm({
           <Field label="Tên nhà thầu *">
             <Input name="name" required placeholder="Cty XD Tiến Lộc" value={fields.name} onChange={set("name")} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Mã số thuế"><Input name="taxCode" value={fields.taxCode} onChange={set("taxCode")} /></Field>
             <Field label="SĐT"><Input name="phone" value={fields.phone} onChange={set("phone")} /></Field>
           </div>
@@ -128,7 +128,7 @@ export function CreateVendorForm({
           <Field label="Người liên hệ"><Input name="contactName" value={fields.contactName} onChange={set("contactName")} /></Field>
           <div className="border border-line rounded-lg p-3 space-y-3">
             <p className="text-xs font-semibold text-muted uppercase">Tài khoản nhận tiền</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
               <Field label="Ngân hàng">
                 <BankNameInput name="bankName" placeholder="Vietcombank" value={fields.bankName} onChange={set("bankName")} />
               </Field>
@@ -162,7 +162,7 @@ export function EditVendorForm({
           <Field label="Tên nhà thầu *">
             <Input name="name" required defaultValue={vendor.name} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Mã số thuế"><Input name="taxCode" defaultValue={vendor.taxCode ?? ""} /></Field>
             <Field label="SĐT"><Input name="phone" defaultValue={vendor.phone ?? ""} /></Field>
           </div>
@@ -170,7 +170,7 @@ export function EditVendorForm({
           <Field label="Người liên hệ"><Input name="contactName" defaultValue={vendor.contactName ?? ""} /></Field>
           <div className="border border-line rounded-lg p-3 space-y-3">
             <p className="text-xs font-semibold text-muted uppercase">Tài khoản nhận tiền</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
               <Field label="Ngân hàng"><BankNameInput name="bankName" defaultValue={vendor.bankName ?? ""} placeholder="Vietcombank" /></Field>
               <Field label="Số tài khoản"><Input name="bankAccountNumber" defaultValue={vendor.bankAccountNumber ?? ""} /></Field>
             </div>
@@ -281,7 +281,7 @@ export function CreateContractForm({
               ))}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Số HĐ *"><Input name="code" required placeholder="HĐ-2026-001" /></Field>
             <Field label="Trạng thái">
               <Select name="status" defaultValue="SIGNED">
@@ -294,7 +294,7 @@ export function CreateContractForm({
           <Field label="Tiêu đề *"><Input name="title" required placeholder="Thi công phần thô nhà phố" /></Field>
           <ContractValueFields initialVatRate="8" />
           <Field label="Giữ lại bảo hành (%)"><Input name="retentionPct" defaultValue="5" inputMode="decimal" /></Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Ngày ký"><Input name="signedDate" type="date" /></Field>
             <Field label="Khởi công"><Input name="startDate" type="date" /></Field>
             <Field label="Hoàn thành dự kiến"><Input name="plannedEndDate" type="date" /></Field>
@@ -330,7 +330,7 @@ export function EditContractForm({
               ))}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Số HĐ *"><Input name="code" required defaultValue={contract.code} /></Field>
             <Field label="Trạng thái">
               <Select name="status" defaultValue={contract.status}>
@@ -348,7 +348,7 @@ export function EditContractForm({
             initialVatRate={String(contract.vatRate)}
           />
           <Field label="Giữ lại bảo hành (%)"><Input name="retentionPct" inputMode="decimal" defaultValue={String(contract.retentionPct)} /></Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Ngày ký"><Input name="signedDate" type="date" defaultValue={d(contract.signedDate)} /></Field>
             <Field label="Khởi công"><Input name="startDate" type="date" defaultValue={d(contract.startDate)} /></Field>
             <Field label="Hoàn thành dự kiến"><Input name="plannedEndDate" type="date" defaultValue={d(contract.plannedEndDate)} /></Field>
@@ -839,7 +839,7 @@ export function AddPenaltyRuleForm({ contractId }: { contractId: string }) {
           <Field label="Loại phạt">
             <Select name="type" value={preset.type} onChange={() => {}}>{opts(PENALTY_TYPE)}</Select>
           </Field>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Cách tính">
               <Select name="basis" value={preset.basis} onChange={() => {}}>{opts(PENALTY_BASIS)}</Select>
             </Field>
@@ -872,7 +872,7 @@ export function RecordPenaltyEventForm({
               ))}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Từ ngày *"><Input name="startDate" type="date" required /></Field>
             <Field label="Đến ngày (bỏ trống nếu đang chạy)"><Input name="endDate" type="date" /></Field>
           </div>
@@ -899,7 +899,7 @@ export function AddDiscountForm({
       {(close) => (
         <form action={async (fd) => { await addDiscount(contractId, fd); close(); }} className="space-y-3">
           <Field label="Loại"><Select name="type">{opts(DISCOUNT_TYPE)}</Select></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Giảm theo % (vd 100 = miễn phí)"><Input name="percent" inputMode="decimal" /></Field>
             <Field label="Hoặc số tiền cố định (VND)"><Input name="amount" inputMode="numeric" /></Field>
           </div>
@@ -924,7 +924,7 @@ export function CreateVariationForm({ contractId }: { contractId: string }) {
     <ModalButton label="+ Phiếu phát sinh" title="Lập phiếu yêu cầu thay đổi (Variation)" variant="default">
       {(close) => (
         <form action={async (fd) => { await createVariation(contractId, fd); close(); }} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Mã (tự sinh nếu bỏ trống)"><Input name="code" placeholder="VO-001" /></Field>
             <Field label="Lý do"><Select name="reason">{opts(VARIATION_REASON)}</Select></Field>
           </div>

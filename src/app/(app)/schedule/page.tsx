@@ -126,6 +126,7 @@ export default async function SchedulePage() {
         {dailyLogs.length === 0 ? (
           <EmptyState title="Chưa có nhật ký" sub="Ghi thời tiết & nhân công mỗi ngày — bằng chứng gia hạn tiến độ hợp lệ" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -190,6 +191,7 @@ export default async function SchedulePage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 

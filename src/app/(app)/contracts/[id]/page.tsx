@@ -219,6 +219,7 @@ export default async function ContractDetailPage({
         {contract.paymentStages.length === 0 ? (
           <EmptyState title="Chưa cấu hình đợt thanh toán" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -342,6 +343,7 @@ export default async function ContractDetailPage({
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
@@ -439,6 +441,7 @@ export default async function ContractDetailPage({
         {contract.variations.length === 0 ? (
           <EmptyState title="Chưa có phát sinh nào" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -469,6 +472,7 @@ export default async function ContractDetailPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

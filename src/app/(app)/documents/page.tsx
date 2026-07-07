@@ -100,6 +100,7 @@ export default async function DocumentsPage({
             sub="Bản vẽ xin phép, bản vẽ kỹ thuật, biên bản nghiệm thu, ảnh khảo sát nhà lân cận…"
           />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -148,6 +149,7 @@ export default async function DocumentsPage({
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

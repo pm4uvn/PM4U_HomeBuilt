@@ -106,7 +106,7 @@ export function CreatePhaseForm({ projectId }: { projectId: string }) {
           <Field label="Tỷ trọng tiến độ (%) — tổng các giai đoạn nên = 100">
             <Input name="weight" inputMode="decimal" defaultValue="10" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Bắt đầu (kế hoạch)"><Input name="plannedStart" type="date" /></Field>
             <Field label="Kết thúc (kế hoạch)"><Input name="plannedEnd" type="date" /></Field>
           </div>
@@ -130,7 +130,7 @@ export function UpdatePhaseForm({
           <Field label="Tiến độ hoàn thành (%)">
             <Input name="progressPct" type="number" min="0" max="100" defaultValue={String(phase.progressPct)} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Bắt đầu (kế hoạch)"><Input name="plannedStart" type="date" defaultValue={d(phase.plannedStart)} /></Field>
             <Field label="Kết thúc (kế hoạch)"><Input name="plannedEnd" type="date" defaultValue={d(phase.plannedEnd)} /></Field>
           </div>
@@ -433,11 +433,11 @@ function DailyLogFields({
   const phasesWithMilestones = phases.filter((p) => p.milestones.length > 0);
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Ngày"><Input name="logDate" type="date" defaultValue={logDate} /></Field>
         <Field label="Thời tiết"><Select name="weather" defaultValue={defaults?.weather}>{opts(WEATHER)}</Select></Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Số giờ mưa">
           <Input name="rainHours" inputMode="decimal" placeholder="0" defaultValue={defaults?.rainHours ?? ""} />
         </Field>

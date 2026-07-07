@@ -126,7 +126,7 @@ function MilestoneAndDatesFields({
           </Button>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Ngày cần chốt mẫu">
           <Input ref={chotMauRef} name="ngayCanChotMau" type="date" defaultValue={defaultDates?.chotMau ?? ""} />
         </Field>
@@ -134,7 +134,7 @@ function MilestoneAndDatesFields({
           <Input ref={datHangRef} name="ngayCanDatHang" type="date" defaultValue={defaultDates?.datHang ?? ""} />
         </Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Ngày cần giao hàng">
           <Input ref={giaoHangRef} name="ngayCanGiaoHang" type="date" defaultValue={defaultDates?.giaoHang ?? ""} />
         </Field>
@@ -189,7 +189,7 @@ export function AddVatTuDuAnForm({
               ))}
             </Select>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Khu vực sử dụng">
               <Input name="khuVucSuDung" placeholder="Phòng khách, WC tầng 2..." />
             </Field>
@@ -197,7 +197,7 @@ export function AddVatTuDuAnForm({
               <Input name="donViTinh" defaultValue={selected?.donViTinh ?? ""} key={selected?.donViTinh} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Khối lượng dự kiến">
               <Input name="khoiLuongDuKien" inputMode="decimal" placeholder="0" />
             </Field>
@@ -211,7 +211,7 @@ export function AddVatTuDuAnForm({
               />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhà cung cấp">
               <Select name="idNhaCungCap" defaultValue="">
                 <option value="">— Chưa xác định —</option>
@@ -255,7 +255,7 @@ export function EditVatTuDuAnForm({
           <Field label="Khu vực sử dụng">
             <Input name="khuVucSuDung" defaultValue={row.khuVucSuDung ?? ""} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Khối lượng dự kiến">
               <Input name="khoiLuongDuKien" inputMode="decimal" defaultValue={row.khoiLuongDuKien ?? ""} />
             </Field>
@@ -263,7 +263,7 @@ export function EditVatTuDuAnForm({
               <Input name="khoiLuongThucTe" inputMode="decimal" defaultValue={row.khoiLuongThucTe ?? ""} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Đơn giá dự kiến (VND)">
               <Input name="donGiaDuKien" inputMode="decimal" defaultValue={row.donGiaDuKien ?? ""} />
             </Field>
@@ -271,7 +271,7 @@ export function EditVatTuDuAnForm({
               <Input name="donGiaChot" inputMode="decimal" defaultValue={row.donGiaChot ?? ""} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhà cung cấp">
               <Select name="idNhaCungCap" defaultValue={row.nhaCungCap?.id ?? ""}>
                 <option value="">— Chưa xác định —</option>

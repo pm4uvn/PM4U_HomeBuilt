@@ -19,7 +19,7 @@ export function CreatePurchaseForm({ projectId }: { projectId: string }) {
         <form action={async (fd) => { await createPurchase(projectId, fd); close(); }} className="space-y-3">
           <Field label="Danh mục *"><Select name="category" required>{opts(OWNER_SUPPLY_CATEGORY)}</Select></Field>
           <Field label="Tên hạng mục *"><Input name="name" required placeholder="Gạch 60x60 Đồng Tâm — 120m²" /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Chi phí dự kiến (VND) *"><Input name="plannedCost" required inputMode="numeric" /></Field>
             <Field label="Cần có tại công trình trước ngày"><Input name="neededByDate" type="date" /></Field>
           </div>

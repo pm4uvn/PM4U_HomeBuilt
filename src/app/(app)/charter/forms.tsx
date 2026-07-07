@@ -296,7 +296,7 @@ export function EditCharterForm({
           <Field label="Mục tiêu dự án *">
             <Textarea name="objective" required rows={2} defaultValue={charter?.objective ?? ""} placeholder="Xây nhà ở riêng lẻ 1 trệt 2 lầu + tum cho gia đình, hoàn thành trong ngân sách và thời hạn đã định" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Phạm vi bao gồm">
               <Textarea name="scopeIncluded" rows={2} defaultValue={charter?.scopeIncluded ?? ""} placeholder="Thi công thô, hoàn thiện, nội thất gắn liền..." />
             </Field>
@@ -307,7 +307,7 @@ export function EditCharterForm({
           <Field label="Tiêu chí thành công">
             <Textarea name="successCriteria" rows={2} defaultValue={charter?.successCriteria ?? ""} placeholder="Hoàn thành trước 31/12/2027, không vượt quá 10% ngân sách, đạt nghiệm thu 100% hạng mục" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Giả định">
               <Textarea name="assumptions" rows={2} defaultValue={charter?.assumptions ?? ""} placeholder="Giá vật tư không biến động quá 10%, thời tiết thuận lợi..." />
             </Field>
@@ -398,16 +398,16 @@ export type StakeholderRow = {
 function StakeholderFields({ s }: { s?: StakeholderRow }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Tên *"><Input name="name" required defaultValue={s?.name ?? ""} /></Field>
         <Field label="Vai trò *"><Input name="role" required defaultValue={s?.role ?? ""} placeholder="Chủ đầu tư, Giám sát, Hàng xóm..." /></Field>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Tổ chức / đơn vị"><Input name="organization" defaultValue={s?.organization ?? ""} /></Field>
         <Field label="Điện thoại"><Input name="phone" defaultValue={s?.phone ?? ""} /></Field>
       </div>
       <Field label="Email"><Input name="email" type="email" defaultValue={s?.email ?? ""} /></Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Mức độ ảnh hưởng">
           <Select name="influence" defaultValue={s?.influence ?? "MEDIUM"}>{opts(STAKEHOLDER_LEVEL)}</Select>
         </Field>

@@ -80,6 +80,7 @@ export default async function ContractsPage() {
         {contracts.length === 0 ? (
           <EmptyState title="Chưa có hợp đồng nào" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -143,6 +144,7 @@ export default async function ContractsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

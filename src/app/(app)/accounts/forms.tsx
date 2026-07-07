@@ -11,7 +11,7 @@ export function CreateBankAccountForm({ projectId }: { projectId: string }) {
       {(close) => (
         <form action={async (fd) => { await createBankAccount(projectId, fd); close(); }} className="space-y-3">
           <Field label="Tên gợi nhớ *"><Input name="nickname" required placeholder="Vietcombank chính" /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Ngân hàng *"><BankNameInput name="bankName" required placeholder="Vietcombank" /></Field>
             <Field label="Số tài khoản *"><Input name="accountNumber" required /></Field>
           </div>
@@ -36,7 +36,7 @@ export function EditBankAccountForm({
           className="space-y-3"
         >
           <Field label="Tên gợi nhớ *"><Input name="nickname" required defaultValue={account.nickname} /></Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Ngân hàng *"><BankNameInput name="bankName" required defaultValue={account.bankName} /></Field>
             <Field label="Số tài khoản *"><Input name="accountNumber" required defaultValue={account.accountNumber} /></Field>
           </div>

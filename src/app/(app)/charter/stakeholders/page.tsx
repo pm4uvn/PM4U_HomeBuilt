@@ -90,6 +90,7 @@ export default async function StakeholdersPage() {
           </Card>
 
           <Card title="Danh sách chi tiết">
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -136,6 +137,7 @@ export default async function StakeholdersPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
         </>
       )}

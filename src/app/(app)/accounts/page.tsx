@@ -73,6 +73,7 @@ export default async function AccountsPage() {
               {a.transactions.length === 0 ? (
                 <p className="text-[13px] text-muted">Chưa có giao dịch nào qua tài khoản này.</p>
               ) : (
+                <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -101,6 +102,7 @@ export default async function AccountsPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </Card>
           );
@@ -112,6 +114,7 @@ export default async function AccountsPage() {
         {vendors.length === 0 ? (
           <EmptyState title="Chưa có nhà thầu nào" />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="text-left text-[11px] text-muted border-b border-grid">
@@ -142,6 +145,7 @@ export default async function AccountsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

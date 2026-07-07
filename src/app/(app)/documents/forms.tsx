@@ -53,7 +53,7 @@ function UploadForm({
       <Field label="File * (tối đa 50MB)">
         <Input name="file" type="file" required />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Loại hồ sơ">
           <Select name="docType" value={docType} onChange={(e) => setDocType(e.target.value)}>
             {opts(DOC_TYPE)}
@@ -67,7 +67,7 @@ function UploadForm({
       {docType === "PERMIT_DRAWING" && (
         <div className="border border-line rounded-lg p-3 space-y-3">
           <p className="text-xs font-semibold text-muted uppercase">Chỉ tiêu bản vẽ xin phép</p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
             <Field label="Cốt nền (m)"><Input name="cotNen" inputMode="decimal" placeholder="0.45" /></Field>
             <Field label="Khoảng lùi (m)"><Input name="khoangLui" inputMode="decimal" placeholder="2.4" /></Field>
             <Field label="DT sàn (m²)"><Input name="dienTichSan" inputMode="decimal" placeholder="210.5" /></Field>
@@ -81,7 +81,7 @@ function UploadForm({
       <Field label="Tags (phân cách bằng dấu phẩy)">
         <Input name="tags" placeholder="móng, tầng 2, WC master" />
       </Field>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
         <Field label="Gắn với hợp đồng">
           <Select name="contractId" defaultValue="">
             <option value="">— Không —</option>

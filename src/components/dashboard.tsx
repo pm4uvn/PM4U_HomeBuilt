@@ -280,26 +280,28 @@ export function CashflowTable({ cashflow }: { cashflow: DashboardData["cashflow"
       {cashflow.length === 0 ? (
         <EmptyState title="Không có khoản chi nào sắp tới" />
       ) : (
-        <table className="w-full">
-          <thead>
-            <tr className="text-left text-[11px] text-muted border-b border-grid">
-              <th className="py-1 pr-2 font-semibold">Hạn</th>
-              <th className="py-1 pr-2 font-semibold">Khoản chi</th>
-              <th className="py-1 pr-2 font-semibold text-right">Số tiền</th>
-              <th className="py-1 font-semibold">Trạng thái</th>
-            </tr>
-          </thead>
-          <tbody>
-            {cashflow.map((c, i) => (
-              <tr key={i} className="border-b border-grid last:border-0 text-[13px]">
-                <td className="py-2 pr-2 money">{c.due ? fmtDate(c.due) : "—"}</td>
-                <td className="py-2 pr-2">{c.item}</td>
-                <td className="py-2 pr-2 text-right money font-bold">{fmtVND(c.amount)}</td>
-                <td className="py-2"><StatusPill status={c.status === "warning" ? "warning" : c.status === "critical" ? "critical" : "good"} label={c.label} /></td>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[11px] text-muted border-b border-grid">
+                <th className="py-1 pr-2 font-semibold">Hạn</th>
+                <th className="py-1 pr-2 font-semibold">Khoản chi</th>
+                <th className="py-1 pr-2 font-semibold text-right">Số tiền</th>
+                <th className="py-1 font-semibold">Trạng thái</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {cashflow.map((c, i) => (
+                <tr key={i} className="border-b border-grid last:border-0 text-[13px]">
+                  <td className="py-2 pr-2 money">{c.due ? fmtDate(c.due) : "—"}</td>
+                  <td className="py-2 pr-2">{c.item}</td>
+                  <td className="py-2 pr-2 text-right money font-bold">{fmtVND(c.amount)}</td>
+                  <td className="py-2"><StatusPill status={c.status === "warning" ? "warning" : c.status === "critical" ? "critical" : "good"} label={c.label} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Card>
   );
