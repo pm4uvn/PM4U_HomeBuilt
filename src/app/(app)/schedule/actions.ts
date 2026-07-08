@@ -6,8 +6,12 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { requestInspection, recordInspection } from "@/services/milestone.service";
-import { STANDARD_MILESTONES, buildStructureMilestones, spreadDates } from "@/lib/standard-milestones";
+import {
+  STANDARD_MILESTONES, buildStructureMilestones, spreadDates,
+  PRE_CONSTRUCTION_GATE_NAME, PILING_GATE_NAME,
+} from "@/lib/standard-milestones";
 import { getChecklistForMilestoneName } from "@/lib/milestone-checklists";
+import { getTasksForMilestoneName } from "@/lib/milestone-tasks";
 import { uploadToStorage, removeFromStorage } from "@/lib/storage";
 import type { PhaseType, InspectionMethod, InspectionResult, Weather } from "@prisma/client";
 
@@ -145,13 +149,41 @@ export async function createPhase(projectId: string, fd: FormData) {
   revalidate();
 }
 
+/**
+ * Stage Gate — chặn đóng giai đoạn (đưa progressPct lên 100) nếu mốc "cổng kiểm soát"
+ * tương ứng còn thiếu mục checklist bắt buộc. Chỉ áp dụng cho 2 giai đoạn thuộc module
+ * "Kiểm soát khởi công & nền móng": Xin phép XD (chuẩn bị khởi công) và Ép cọc (nền móng).
+ */
+async function assertStageGatePassed(phaseId: string, progress: number) {
+  if (progress < 100) return;
+  const phase = await prisma.phase.findUniqueOrThrow({ where: { id: phaseId } });
+  const gateName =
+    phase.type === "PERMIT" ? PRE_CONSTRUCTION_GATE_NAME : phase.type === "PILING" ? PILING_GATE_NAME : null;
+  if (!gateName) return;
+
+  const gate = await prisma.milestone.findFirst({
+    where: { phaseId, name: gateName },
+    include: { checklistItems: true },
+  });
+  // Chưa có mốc cổng kiểm soát (dự án cũ tạo trước khi có module này) -> không chặn, tránh khóa cứng dữ liệu có sẵn
+  if (!gate) return;
+
+  const missing = gate.checklistItems.filter((c) => !c.isChecked).map((c) => c.label);
+  if (missing.length > 0) {
+    throw new Error(
+      `Chưa thể đóng giai đoạn — còn thiếu ở "${gateName}": ${missing.join(", ")}. Vào mốc này tick đủ checklist trước.`,
+    );
+  }
+}
+
 export async function updatePhase(phaseId: string, fd: FormData) {
   await requireUser();
-  const progress = Number(str(fd, "progressPct"));
+  const progress = Math.min(100, Math.max(0, Number(str(fd, "progressPct"))));
+  await assertStageGatePassed(phaseId, progress);
   await prisma.phase.update({
     where: { id: phaseId },
     data: {
-      progressPct: Math.min(100, Math.max(0, progress)),
+      progressPct: progress,
       plannedStart: dateOrNull(fd, "plannedStart"),
       plannedEnd: dateOrNull(fd, "plannedEnd"),
       actualStart: progress > 0 ? (dateOrNull(fd, "actualStart") ?? undefined) : undefined,
@@ -178,6 +210,15 @@ export async function createMilestone(phaseId: string, fd: FormData) {
   if (items.length > 0) {
     await prisma.milestoneChecklistItem.createMany({
       data: items.map((label, idx) => ({ milestoneId: milestone.id, label, sortOrder: idx })),
+    });
+  }
+  // WBS công việc con: luôn dùng bộ gợi ý khớp tên (hoặc fallback chung) — CĐT sửa/xóa/thêm sau nếu cần
+  const tasks = getTasksForMilestoneName(milestone.name);
+  if (tasks.length > 0) {
+    await prisma.milestoneTask.createMany({
+      data: tasks.map((t, idx) => ({
+        milestoneId: milestone.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, sortOrder: idx,
+      })),
     });
   }
   revalidate();
@@ -260,18 +301,22 @@ export async function createStandardMilestones(
   return toCreate.length;
 }
 
-/** Sinh checklist chuẩn cho các milestone vừa tạo (khớp theo tên, trong đúng giai đoạn) */
+/** Sinh checklist + WBS công việc chuẩn cho các milestone vừa tạo (khớp theo tên, trong đúng giai đoạn) */
 async function createChecklistsForPhaseMilestones(phaseId: string, names: string[]) {
   const created = await prisma.milestone.findMany({
     where: { phaseId, name: { in: names } },
     select: { id: true, name: true },
   });
-  const data: { milestoneId: string; label: string; sortOrder: number }[] = [];
+  const checklistData: { milestoneId: string; label: string; sortOrder: number }[] = [];
+  const taskData: { milestoneId: string; name: string; durationDays: number; responsible: string; sortOrder: number }[] = [];
   for (const m of created) {
-    const items = getChecklistForMilestoneName(m.name);
-    items.forEach((label, idx) => data.push({ milestoneId: m.id, label, sortOrder: idx }));
+    getChecklistForMilestoneName(m.name).forEach((label, idx) => checklistData.push({ milestoneId: m.id, label, sortOrder: idx }));
+    getTasksForMilestoneName(m.name).forEach((t, idx) =>
+      taskData.push({ milestoneId: m.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, sortOrder: idx }),
+    );
   }
-  if (data.length > 0) await prisma.milestoneChecklistItem.createMany({ data });
+  if (checklistData.length > 0) await prisma.milestoneChecklistItem.createMany({ data: checklistData });
+  if (taskData.length > 0) await prisma.milestoneTask.createMany({ data: taskData });
 }
 
 export async function toggleChecklistItem(itemId: string) {
@@ -299,6 +344,38 @@ export async function deleteChecklistItem(itemId: string) {
   revalidate();
 }
 
+/** Tick nhanh 1 công việc con trong WBS của milestone — như checklist nhật ký */
+export async function toggleMilestoneTask(taskId: string) {
+  await requireUser();
+  const task = await prisma.milestoneTask.findUniqueOrThrow({ where: { id: taskId } });
+  await prisma.milestoneTask.update({
+    where: { id: taskId },
+    data: { isDone: !task.isDone, doneAt: !task.isDone ? new Date() : null },
+  });
+  revalidate();
+}
+
+export async function addMilestoneTask(milestoneId: string, fd: FormData) {
+  await requireUser();
+  const count = await prisma.milestoneTask.count({ where: { milestoneId } });
+  await prisma.milestoneTask.create({
+    data: {
+      milestoneId,
+      name: str(fd, "name"),
+      durationDays: Math.max(1, Number(str(fd, "durationDays") || 1)),
+      responsible: str(fd, "responsible") || null,
+      sortOrder: count,
+    },
+  });
+  revalidate();
+}
+
+export async function deleteMilestoneTask(taskId: string) {
+  await requireUser();
+  await prisma.milestoneTask.delete({ where: { id: taskId } });
+  revalidate();
+}
+
 export async function requestInspectionAction(milestoneId: string) {
   await requireUser();
   await requestInspection(milestoneId);
@@ -317,12 +394,24 @@ export async function recordInspectionAction(milestoneId: string, fd: FormData) 
   revalidatePath("/contracts");
 }
 
-/** Tách các dòng việc trong ngày từ form (mảng itemLabel[] / itemChecked[] cùng chỉ số) */
+/** Tách các dòng việc trong ngày từ form (mảng itemLabel[] / itemChecked[] / itemDueDate[] / itemMilestoneId[] / itemVatTuId[] / itemWorkType[] cùng chỉ số) */
 function parseDailyLogItems(fd: FormData) {
   const labels = fd.getAll("itemLabel[]").map(String);
   const checked = fd.getAll("itemChecked[]").map(String);
+  const dueDates = fd.getAll("itemDueDate[]").map(String);
+  const milestoneIds = fd.getAll("itemMilestoneId[]").map(String);
+  const vatTuIds = fd.getAll("itemVatTuId[]").map(String);
+  const workTypes = fd.getAll("itemWorkType[]").map(String);
   return labels
-    .map((label, i) => ({ label: label.trim(), isChecked: checked[i] === "true", sortOrder: i }))
+    .map((label, i) => ({
+      label: label.trim(),
+      isChecked: checked[i] === "true",
+      dueDate: dueDates[i] ? new Date(dueDates[i]) : null,
+      milestoneId: milestoneIds[i] ? milestoneIds[i] : null,
+      vatTuDuAnId: vatTuIds[i] ? BigInt(vatTuIds[i]) : null,
+      workType: workTypes[i] ? (workTypes[i] as never) : null,
+      sortOrder: i,
+    }))
     .filter((it) => it.label);
 }
 
@@ -331,6 +420,7 @@ export async function createDailyLog(projectId: string, fd: FormData) {
   const logDate = dateOrNull(fd, "logDate") ?? new Date(new Date().toDateString());
   const weather = str(fd, "weather") as Weather;
   const milestoneIds = fd.getAll("milestoneIds").map(String).filter(Boolean);
+  const vatTuIds = fd.getAll("vatTuIds").map(String).filter(Boolean).map((id) => BigInt(id));
   const items = parseDailyLogItems(fd);
 
   await prisma.$transaction(async (tx) => {
@@ -347,6 +437,7 @@ export async function createDailyLog(projectId: string, fd: FormData) {
         workerCount: Number(str(fd, "workerCount") || 0),
         workDescription: str(fd, "workDescription") || null,
         milestones: { connect: milestoneIds.map((id) => ({ id })) },
+        vatTuDuAn: { connect: vatTuIds.map((id) => ({ id })) },
       },
       update: {
         weather,
@@ -357,6 +448,7 @@ export async function createDailyLog(projectId: string, fd: FormData) {
         workDescription: str(fd, "workDescription") || null,
         // "set" thay hoàn toàn danh sách liên kết cũ bằng lựa chọn mới mỗi lần cập nhật
         milestones: { set: milestoneIds.map((id) => ({ id })) },
+        vatTuDuAn: { set: vatTuIds.map((id) => ({ id })) },
       },
     });
 
@@ -375,6 +467,7 @@ export async function updateDailyLog(id: string, fd: FormData) {
   const logDate = dateOrNull(fd, "logDate") ?? new Date(new Date().toDateString());
   const weather = str(fd, "weather") as Weather;
   const milestoneIds = fd.getAll("milestoneIds").map(String).filter(Boolean);
+  const vatTuIds = fd.getAll("vatTuIds").map(String).filter(Boolean).map((id) => BigInt(id));
   const items = parseDailyLogItems(fd);
 
   await prisma.$transaction(async (tx) => {
@@ -389,6 +482,7 @@ export async function updateDailyLog(id: string, fd: FormData) {
         workerCount: Number(str(fd, "workerCount") || 0),
         workDescription: str(fd, "workDescription") || null,
         milestones: { set: milestoneIds.map((id) => ({ id })) },
+        vatTuDuAn: { set: vatTuIds.map((id) => ({ id })) },
       },
     });
 

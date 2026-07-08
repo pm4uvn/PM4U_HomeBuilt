@@ -145,6 +145,67 @@ const TEMPLATE_SEV_TAG: Record<string, "good" | "warning" | "critical" | "neutra
   LOW: "good", MEDIUM: "neutral", HIGH: "warning", CRITICAL: "critical",
 };
 
+export type AutoRiskAlertRow = {
+  ruleId: string;
+  title: string;
+  category: string;
+  severity: string;
+  description: string;
+  mitigationActions: string[];
+};
+
+/**
+ * Cảnh báo tự động từ Risk Rules — module "Kiểm soát khởi công & nền móng". Tính lại mỗi lần tải trang
+ * dựa trên dữ liệu thật (cổng kiểm soát, nhật ký, khảo sát hiện trạng...), không phải rủi ro đã lưu sẵn.
+ */
+export function AutoRiskAlerts({ projectId, alerts }: { projectId: string; alerts: AutoRiskAlertRow[] }) {
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [pending, startTransition] = useTransition();
+  if (alerts.length === 0) return null;
+
+  return (
+    <Card title="🚨 Cảnh báo tự động — Kiểm soát khởi công & nền móng">
+      <div className="space-y-2">
+        {alerts.map((a) => {
+          const isAdded = added.has(a.ruleId);
+          return (
+            <div key={a.ruleId} className="flex items-start gap-3 flex-wrap border border-line rounded-lg px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-[13.5px] flex items-center gap-2 flex-wrap">
+                  {a.title}
+                  <Tag sev={TEMPLATE_SEV_TAG[a.severity] ?? "neutral"}>{RISK_SEVERITY[a.severity] ?? a.severity}</Tag>
+                </div>
+                <div className="text-[12.5px] text-ink-2 mt-0.5">{a.description}</div>
+                <ul className="list-disc list-inside text-xs text-muted mt-1 space-y-0.5">
+                  {a.mitigationActions.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+              </div>
+              <Button
+                variant={isAdded ? "default" : "primary"}
+                disabled={isAdded || pending}
+                onClick={() => {
+                  startTransition(async () => {
+                    await addRiskFromTemplate(projectId, {
+                      title: a.title,
+                      category: a.category as never,
+                      severity: a.severity as never,
+                      description: a.description,
+                      mitigationActions: a.mitigationActions,
+                    });
+                    setAdded((prev) => new Set(prev).add(a.ruleId));
+                  });
+                }}
+              >
+                {isAdded ? "✓ Đã thêm" : "+ Thêm vào sổ"}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 const TEMPLATE_PHASE_ORDER = Object.keys(RISK_TEMPLATES) as (keyof typeof RISK_TEMPLATES)[];
 
 /** Danh mục rủi ro thường gặp theo từng giai đoạn (đúc kết kinh nghiệm PM xây dựng), bấm để thêm nhanh vào Sổ rủi ro */

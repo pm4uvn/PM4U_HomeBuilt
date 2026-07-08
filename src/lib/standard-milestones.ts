@@ -22,6 +22,10 @@ export function spreadDates(start: Date, end: Date, count: number): Date[] {
   return Array.from({ length: count }, (_, i) => new Date(start.getTime() + (span * (i + 1)) / count));
 }
 
+/** Tên 2 mốc "cổng kiểm soát" (stage gate) — dùng khớp chính xác khi chặn đóng giai đoạn, xem updatePhase() */
+export const PRE_CONSTRUCTION_GATE_NAME = "Chuẩn bị khởi công — Cổng kiểm soát";
+export const PILING_GATE_NAME = "Ép cọc / nền móng — Cổng kiểm soát";
+
 export const STANDARD_MILESTONES: Partial<Record<PhaseType, MilestoneTemplate[]>> = {
   TENDERING: [
     { name: "Duyệt hồ sơ năng lực nhà thầu", isHoldPoint: false },
@@ -39,13 +43,16 @@ export const STANDARD_MILESTONES: Partial<Record<PhaseType, MilestoneTemplate[]>
   PERMIT: [
     { name: "Nộp hồ sơ xin phép xây dựng", isHoldPoint: false },
     { name: "Nhận Giấy phép xây dựng", isHoldPoint: true },
+    { name: PRE_CONSTRUCTION_GATE_NAME, isHoldPoint: true },
   ],
   PILING: [
     { name: "Nghiệm thu cọc ép thử", isHoldPoint: true },
     { name: "Nghiệm thu cọc ép đại trà", isHoldPoint: true },
+    { name: PILING_GATE_NAME, isHoldPoint: true },
   ],
   // STRUCTURE xử lý riêng theo số tầng — xem buildStructureMilestones()
   FINISHING: [
+    { name: "Duyệt báo giá vật tư & nhân công hoàn thiện", isHoldPoint: false },
     { name: "Nghiệm thu ốp lát gạch nền, tường", isHoldPoint: false },
     { name: "Nghiệm thu bả matit, sơn nước hoàn thiện", isHoldPoint: false },
     { name: "Nghiệm thu lắp đặt cửa, cửa sổ", isHoldPoint: false },
@@ -54,6 +61,7 @@ export const STANDARD_MILESTONES: Partial<Record<PhaseType, MilestoneTemplate[]>
     { name: "Thử nước chống thấm ban công, sân thượng (ngâm 24h)", isHoldPoint: true },
   ],
   INTERIOR_INSTALL: [
+    { name: "Duyệt thiết kế nội thất (bản vẽ, phối cảnh 3D)", isHoldPoint: false },
     { name: "Nghiệm thu lắp đặt tủ bếp, nội thất gắn liền", isHoldPoint: false },
     { name: "Nghiệm thu lắp đặt đèn, rèm trang trí", isHoldPoint: false },
     { name: "Vệ sinh công nghiệp trước bàn giao", isHoldPoint: false },

@@ -73,11 +73,16 @@ model ChecklistTemplate {
 }
 
 model ChecklistTemplateItem {
-  id         String            @id @default(cuid())
-  templateId String
-  template   ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  label      String
-  sortOrder  Int               @default(0)
+  id               String            @id @default(cuid())
+  templateId       String
+  template         ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label            String            // = title
+  required         Boolean           @default(true)  // bắt buộc phải có trước khi qua bước tiếp theo
+  evidenceRequired Boolean           @default(false) // cần đính kèm bằng chứng (ảnh/biên bản...)
+  evidenceType     String?           // "Ảnh", "Biên bản", "Văn bản", "Video"...
+  riskIfMissing    String?           // rủi ro nếu thiếu mục này
+  suggestedModule  String?           // module gợi ý để xử lý: "Hồ sơ", "Rủi ro", "Nhật ký", "Hợp đồng"...
+  sortOrder        Int               @default(0)
 }
 
 // --- Tài khoản ngân hàng của CĐT dùng để chi trả (đối soát với sao kê) ---
@@ -486,7 +491,9 @@ model Milestone {
   inspections        InspectionRecord[]
   paymentStages      PaymentStage[]   // các đợt thanh toán do milestone này kích hoạt
   checklistItems     MilestoneChecklistItem[] // các đầu việc cần kiểm tra trước khi nghiệm thu đạt
+  tasks              MilestoneTask[] // WBS cấp 4: công việc thi công con + thời lượng + người phụ trách
   dailyLogs          DailyLog[] @relation("DailyLogMilestones") // nhật ký công trình các ngày liên quan tới mốc này
+  dailyLogItems      DailyLogItem[] // từng việc trong nhật ký gắn trực tiếp với mốc này
   vatTuDuAn          VatTuDuAn[] // vật tư cần hoàn thành trước mốc này (gợi ý ngày chốt/đặt/giao hàng)
 }
 
@@ -499,6 +506,19 @@ model MilestoneChecklistItem {
   isChecked   Boolean   @default(false)
   checkedAt   DateTime?
   sortOrder   Int       @default(0)
+}
+
+/** WBS cấp 4: 1 công việc thi công con dưới 1 milestone, kèm thời lượng dự kiến + người/đơn vị phụ trách */
+model MilestoneTask {
+  id            String    @id @default(cuid())
+  milestoneId   String
+  milestone     Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  name          String    // "Đào đất hố móng"
+  durationDays  Int       @default(1) // số ngày dự kiến thi công công việc này
+  responsible   String?   // "Nhà thầu thô", "Thầu điện nước", "CĐT"...
+  isDone        Boolean   @default(false)
+  doneAt        DateTime?
+  sortOrder     Int       @default(0)
 }
 
 enum MilestoneStatus {
@@ -548,18 +568,25 @@ model DailyLog {
   items          DailyLogItem[] // từng việc trong ngày tách riêng dòng, tick được khi xong
   documents      Document[] // ảnh hiện trường trong ngày
   milestones     Milestone[] @relation("DailyLogMilestones") // các mốc đang thi công/liên quan trong ngày
+  vatTuDuAn      VatTuDuAn[] @relation("DailyLogVatTu") // vật tư đang giao/thi công liên quan trong ngày
 
   @@unique([projectId, logDate])
 }
 
 /** 1 dòng việc trong nhật ký công trình của 1 ngày — tách riêng thay vì gộp chung 1 đoạn văn dài */
 model DailyLogItem {
-  id         String   @id @default(cuid())
-  dailyLogId String
-  dailyLog   DailyLog @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
-  label      String
-  isChecked  Boolean  @default(false)
-  sortOrder  Int      @default(0)
+  id          String     @id @default(cuid())
+  dailyLogId  String
+  dailyLog    DailyLog   @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
+  label       String
+  isChecked   Boolean    @default(false)
+  dueDate     DateTime?  // hạn cần xong việc này — hiện cảnh báo nếu trễ mà chưa tick
+  milestoneId String?    // việc này thuộc đúng 1 mốc nào (tùy chọn) — chi tiết hơn liên kết ở cấp cả ngày
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id])
+  vatTuDuAnId BigInt?    // việc này thuộc đúng 1 vật tư nào (tùy chọn)
+  vatTuDuAn   VatTuDuAn? @relation(fields: [vatTuDuAnId], references: [id])
+  workType    DailyLogWorkType? // loại công việc — dùng lọc/báo cáo theo nhóm (Pháp lý, Mặt bằng, Ép cọc...)
+  sortOrder   Int        @default(0)
 }
 
 enum Weather {
@@ -568,6 +595,31 @@ enum Weather {
   LIGHT_RAIN
   HEAVY_RAIN
   STORM
+}
+
+// Nhóm loại công việc trong nhật ký — riêng cho module Kiểm soát khởi công & nền móng
+enum DailyLogWorkType {
+  // --- Khởi công & nền móng ---
+  LEGAL_DOCS         // Hồ sơ pháp lý
+  SITE_PREPARATION   // Chuẩn bị mặt bằng
+  LAND_BOUNDARY      // Ranh đất
+  NEIGHBOR_CONDITION // Hiện trạng nhà bên cạnh
+  GROUNDBREAKING     // Động thổ
+  DEMOLITION         // Phá dỡ
+  PILING             // Ép cọc
+  EXCAVATION         // Đào móng
+  // --- Thi công thô -> hoàn thiện -> nội thất -> bàn giao ---
+  STRUCTURE_WORK     // Thi công thô (cốt thép, bê tông, xây tô)
+  MEP_WORK           // Điện nước (M&E)
+  WATERPROOFING      // Chống thấm
+  FINISHING_WORK     // Hoàn thiện (ốp lát, sơn, cửa, thiết bị)
+  INTERIOR_WORK       // Lắp đặt nội thất
+  HANDOVER           // Bàn giao / hoàn công
+  // --- Chung, áp dụng mọi giai đoạn ---
+  SAFETY             // An toàn lao động
+  MATERIAL_DELIVERY  // Giao nhận vật tư
+  ACCEPTANCE         // Nghiệm thu
+  VARIATION          // Phát sinh
 }
 
 // ================ MODULE 4: RISK MANAGEMENT ==========================
@@ -915,6 +967,8 @@ model VatTuDuAn {
   ngayTao             DateTime         @default(now()) @map("ngay_tao")
   ngayCapNhat         DateTime         @default(now()) @map("ngay_cap_nhat")
   congViec            CongViecVatTu[]
+  dailyLogs           DailyLog[]       @relation("DailyLogVatTu")
+  dailyLogItems       DailyLogItem[]
 
   @@map("vat_tu_du_an")
 }

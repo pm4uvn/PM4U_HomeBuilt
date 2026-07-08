@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/schedule", label: "Giai đoạn & Nghiệm thu" },
+  { href: "/schedule/daily-log", label: "📆 Nhật ký" },
   { href: "/schedule/checklist-templates", label: "✅ Mẫu Checklist" },
+  { href: "/schedule/knowledge", label: "📚 Kiến thức" },
 ];
 
-/** Tab điều hướng giữa Tiến độ và Mẫu Checklist — 2 trang cùng module, khác route */
+/** Tab điều hướng giữa Tiến độ, Nhật ký và Mẫu Checklist — cùng module, khác route */
 export function ScheduleTabs() {
   const pathname = usePathname();
   return (

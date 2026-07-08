@@ -3,9 +3,9 @@
 import { useActionState, useRef, useState } from "react";
 import { ModalButton } from "@/components/Modal";
 import { PreviewButton } from "@/components/FilePreview";
-import { Button, Field, Input, Select, Textarea } from "@/components/ui";
-import { PHASE_TYPE, INSPECTION_METHOD, WEATHER } from "@/lib/labels";
-import { fmtDate } from "@/lib/format";
+import { Button, Field, Input, Select, Textarea, Tag, Card } from "@/components/ui";
+import { PHASE_TYPE, INSPECTION_METHOD, WEATHER, MILESTONE_STATUS, INSPECTION_RESULT, DAILY_LOG_WORK_TYPE } from "@/lib/labels";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 import { STANDARD_MILESTONES } from "@/lib/standard-milestones";
 import { SUGGESTED_CHECKLIST_CATEGORIES, getRelevantCategoryNames } from "@/lib/milestone-checklists";
 import { useRouter } from "next/navigation";
@@ -16,6 +16,7 @@ import {
   updateDailyLog, deleteDailyLog, toggleDailyLogItem,
   uploadDailyLogPhotos, deleteDailyLogPhoto, type UploadPhotosState,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
+  toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask,
 } from "./actions";
 import type { PhaseType } from "@prisma/client";
 
@@ -126,7 +127,17 @@ export function UpdatePhaseForm({
   return (
     <ModalButton label="Cập nhật" title={`Cập nhật: ${phase.name}`} variant="default">
       {(close) => (
-        <form action={async (fd) => { await updatePhase(phase.id, fd); close(); }} className="space-y-3">
+        <form
+          action={async (fd) => {
+            try {
+              await updatePhase(phase.id, fd);
+              close();
+            } catch (err) {
+              alert(err instanceof Error ? err.message : "Có lỗi xảy ra, thử lại.");
+            }
+          }}
+          className="space-y-3"
+        >
           <Field label="Tiến độ hoàn thành (%)">
             <Input name="progressPct" type="number" min="0" max="100" defaultValue={String(phase.progressPct)} />
           </Field>
@@ -369,38 +380,93 @@ export function RecordInspectionForm({
 }
 
 type DailyLogPhase = { name: string; milestones: { id: string; name: string }[] };
-type DailyLogItemInput = { label: string; checked: boolean };
+type DailyLogItemInput = {
+  label: string; checked: boolean; dueDate: string; milestoneId: string; vatTuDuAnId: string; workType: string;
+};
 
 /** Danh sách việc trong ngày, mỗi dòng tách riêng và tick được — thay cho 1 đoạn văn dài gộp chung */
-function DailyLogItemsEditor({ items, setItems }: { items: DailyLogItemInput[]; setItems: (v: DailyLogItemInput[]) => void }) {
+function DailyLogItemsEditor({
+  items,
+  setItems,
+  milestoneOptions,
+  vatTuOptions,
+}: {
+  items: DailyLogItemInput[];
+  setItems: (v: DailyLogItemInput[]) => void;
+  milestoneOptions: { id: string; name: string; phaseName: string }[];
+  vatTuOptions: DailyLogVatTuOption[];
+}) {
   function update(i: number, patch: Partial<DailyLogItemInput>) {
     setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   }
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {items.map((it, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <input type="checkbox" checked={it.checked} onChange={(e) => update(i, { checked: e.target.checked })} />
-          <input type="hidden" name="itemChecked[]" value={it.checked ? "true" : "false"} />
-          <Input
-            name="itemLabel[]"
-            className="flex-1"
-            placeholder="Lấy giấy phép chính sao y bản chính..."
-            value={it.label}
-            onChange={(e) => update(i, { label: e.target.value })}
-          />
-          <button
-            type="button"
-            onClick={() => setItems(items.filter((_, idx) => idx !== i))}
-            className="text-critical text-xs font-semibold shrink-0"
-          >
-            Xóa
-          </button>
+        <div key={i} className="border border-line rounded-lg p-2 space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="checkbox" checked={it.checked} onChange={(e) => update(i, { checked: e.target.checked })} />
+            <input type="hidden" name="itemChecked[]" value={it.checked ? "true" : "false"} />
+            <Input
+              name="itemLabel[]"
+              className="flex-1 min-w-[140px]"
+              placeholder="Lấy giấy phép chính sao y bản chính..."
+              value={it.label}
+              onChange={(e) => update(i, { label: e.target.value })}
+            />
+            <Input
+              name="itemDueDate[]"
+              type="date"
+              title="Hạn cần xong"
+              className="!w-36 shrink-0"
+              value={it.dueDate}
+              onChange={(e) => update(i, { dueDate: e.target.value })}
+            />
+            <button
+              type="button"
+              onClick={() => setItems(items.filter((_, idx) => idx !== i))}
+              className="text-critical text-xs font-semibold shrink-0"
+            >
+              Xóa
+            </button>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap pl-6">
+            <Select
+              name="itemMilestoneId[]"
+              className="!py-1 text-[12px] !w-auto flex-1 min-w-[140px]"
+              value={it.milestoneId}
+              onChange={(e) => update(i, { milestoneId: e.target.value })}
+            >
+              <option value="">— Gắn với mốc (tùy chọn) —</option>
+              {milestoneOptions.map((m) => (
+                <option key={m.id} value={m.id}>{m.phaseName} · {m.name}</option>
+              ))}
+            </Select>
+            <Select
+              name="itemVatTuId[]"
+              className="!py-1 text-[12px] !w-auto flex-1 min-w-[140px]"
+              value={it.vatTuDuAnId}
+              onChange={(e) => update(i, { vatTuDuAnId: e.target.value })}
+            >
+              <option value="">— Gắn với vật tư (tùy chọn) —</option>
+              {vatTuOptions.map((v) => (
+                <option key={v.id} value={v.id}>{v.groupName} · {v.name}</option>
+              ))}
+            </Select>
+            <Select
+              name="itemWorkType[]"
+              className="!py-1 text-[12px] !w-auto flex-1 min-w-[140px]"
+              value={it.workType}
+              onChange={(e) => update(i, { workType: e.target.value })}
+            >
+              <option value="">— Loại công việc (tùy chọn) —</option>
+              {opts(DAILY_LOG_WORK_TYPE)}
+            </Select>
+          </div>
         </div>
       ))}
       <button
         type="button"
-        onClick={() => setItems([...items, { label: "", checked: false }])}
+        onClick={() => setItems([...items, { label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "" }])}
         className="text-brand text-xs font-semibold"
       >
         + Thêm việc
@@ -409,17 +475,23 @@ function DailyLogItemsEditor({ items, setItems }: { items: DailyLogItemInput[]; 
   );
 }
 
+export type DailyLogVatTuOption = { id: string; name: string; groupName: string };
+
 /** Các ô nhập chung cho form Thêm/Sửa nhật ký — tách riêng để dùng lại giữa 2 form */
 function DailyLogFields({
   logDate,
   phases,
   defaultMilestoneIds,
+  vatTuOptions = [],
+  defaultVatTuIds = [],
   defaultItems = [],
   defaults,
 }: {
   logDate: string;
   phases: DailyLogPhase[];
   defaultMilestoneIds: string[];
+  vatTuOptions?: DailyLogVatTuOption[];
+  defaultVatTuIds?: string[];
   defaultItems?: DailyLogItemInput[];
   defaults?: {
     weather?: string;
@@ -429,8 +501,15 @@ function DailyLogFields({
     workDescription?: string | null;
   };
 }) {
-  const [items, setItems] = useState<DailyLogItemInput[]>(defaultItems.length > 0 ? defaultItems : [{ label: "", checked: false }]);
+  const [items, setItems] = useState<DailyLogItemInput[]>(
+    defaultItems.length > 0 ? defaultItems : [{ label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "" }],
+  );
   const phasesWithMilestones = phases.filter((p) => p.milestones.length > 0);
+  const milestoneOptions = phases.flatMap((p) => p.milestones.map((m) => ({ id: m.id, name: m.name, phaseName: p.name })));
+  const vatTuGroups = Array.from(new Set(vatTuOptions.map((v) => v.groupName))).map((groupName) => ({
+    groupName,
+    items: vatTuOptions.filter((v) => v.groupName === groupName),
+  }));
   return (
     <>
       <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
@@ -450,13 +529,13 @@ function DailyLogFields({
         Tính là ngày gia hạn hợp lệ (mưa bão làm ngưng thi công)
       </label>
       <Field label="Công việc trong ngày (mỗi dòng 1 việc, tick khi xong)">
-        <DailyLogItemsEditor items={items} setItems={setItems} />
+        <DailyLogItemsEditor items={items} setItems={setItems} milestoneOptions={milestoneOptions} vatTuOptions={vatTuOptions} />
       </Field>
       <Field label="Ghi chú thêm (tuỳ chọn)">
         <Textarea name="workDescription" rows={2} placeholder="Ghi chú chung khác..." defaultValue={defaults?.workDescription ?? ""} />
       </Field>
       {phasesWithMilestones.length > 0 && (
-        <Field label="Milestone liên quan trong ngày (tùy chọn)">
+        <Field label="Milestone liên quan trong ngày (tùy chọn — nếu KHÔNG gắn mốc riêng cho từng việc ở trên thì áp dụng chung cho tất cả các việc)">
           <div className="max-h-40 overflow-y-auto border border-line rounded-lg p-2 space-y-2">
             {phasesWithMilestones.map((p) => (
               <div key={p.name}>
@@ -477,6 +556,28 @@ function DailyLogFields({
           </div>
         </Field>
       )}
+      {vatTuGroups.length > 0 && (
+        <Field label="Vật tư liên quan trong ngày (tùy chọn — nếu KHÔNG gắn vật tư riêng cho từng việc ở trên thì áp dụng chung cho tất cả các việc)">
+          <div className="max-h-40 overflow-y-auto border border-line rounded-lg p-2 space-y-2">
+            {vatTuGroups.map((g) => (
+              <div key={g.groupName}>
+                <p className="text-xs font-semibold text-muted uppercase">{g.groupName}</p>
+                {g.items.map((v) => (
+                  <label key={v.id} className="flex items-center gap-2 text-[13px] py-0.5">
+                    <input
+                      type="checkbox"
+                      name="vatTuIds"
+                      value={v.id}
+                      defaultChecked={defaultVatTuIds.includes(v.id)}
+                    />
+                    {v.name}
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Field>
+      )}
     </>
   );
 }
@@ -485,17 +586,24 @@ export function DailyLogForm({
   projectId,
   phases = [],
   defaultMilestoneIds = [],
+  vatTuOptions = [],
 }: {
   projectId: string;
   phases?: DailyLogPhase[];
   defaultMilestoneIds?: string[];
+  vatTuOptions?: DailyLogVatTuOption[];
 }) {
   const today = new Date().toISOString().slice(0, 10);
   return (
     <ModalButton label="+ Ghi nhật ký" title="Nhật ký công trình">
       {(close) => (
         <form action={async (fd) => { await createDailyLog(projectId, fd); close(); }} className="space-y-3">
-          <DailyLogFields logDate={today} phases={phases} defaultMilestoneIds={defaultMilestoneIds} />
+          <DailyLogFields
+            logDate={today}
+            phases={phases}
+            defaultMilestoneIds={defaultMilestoneIds}
+            vatTuOptions={vatTuOptions}
+          />
           <div className="pt-2"><Button type="submit" variant="primary" className="w-full">Lưu nhật ký</Button></div>
         </form>
       )}
@@ -512,11 +620,23 @@ export type DailyLogRow = {
   isForceMajeure: boolean;
   workDescription: string | null;
   milestoneIds: string[];
-  items: { id: string; label: string; isChecked: boolean }[];
+  vatTuIds: string[];
+  items: {
+    id: string; label: string; isChecked: boolean; dueDate: string | null;
+    milestoneId: string | null; vatTuDuAnId: string | null; workType: string | null;
+  }[];
 };
 
 /** Sửa 1 ngày nhật ký đã ghi — mở đúng dữ liệu ngày đó, sửa xong lưu vào đúng bản ghi (không tạo trùng) */
-export function EditDailyLogForm({ log, phases = [] }: { log: DailyLogRow; phases?: DailyLogPhase[] }) {
+export function EditDailyLogForm({
+  log,
+  phases = [],
+  vatTuOptions = [],
+}: {
+  log: DailyLogRow;
+  phases?: DailyLogPhase[];
+  vatTuOptions?: DailyLogVatTuOption[];
+}) {
   return (
     <ModalButton label="Sửa" variant="default" title={`Sửa nhật ký ${fmtDate(log.logDate)}`}>
       {(close) => (
@@ -525,7 +645,12 @@ export function EditDailyLogForm({ log, phases = [] }: { log: DailyLogRow; phase
             logDate={log.logDate.slice(0, 10)}
             phases={phases}
             defaultMilestoneIds={log.milestoneIds}
-            defaultItems={log.items.map((it) => ({ label: it.label, checked: it.isChecked }))}
+            vatTuOptions={vatTuOptions}
+            defaultVatTuIds={log.vatTuIds}
+            defaultItems={log.items.map((it) => ({
+              label: it.label, checked: it.isChecked, dueDate: it.dueDate?.slice(0, 10) ?? "",
+              milestoneId: it.milestoneId ?? "", vatTuDuAnId: it.vatTuDuAnId ?? "", workType: it.workType ?? "",
+            }))}
             defaults={{
               weather: log.weather,
               rainHours: log.rainHours,
@@ -541,21 +666,71 @@ export function EditDailyLogForm({ log, phases = [] }: { log: DailyLogRow; phase
   );
 }
 
-/** Hiện danh sách việc trong ngày ngay trong bảng, tick nhanh không cần mở form Sửa */
-export function DailyLogItemsView({ items }: { items: { id: string; label: string; isChecked: boolean }[] }) {
+/**
+ * Hiện danh sách việc trong ngày ngay trong bảng, tick nhanh không cần mở form Sửa.
+ * Việc nào KHÔNG tự gắn mốc/vật tư riêng thì thừa hưởng (fallback) mốc/vật tư chung của cả ngày,
+ * hiện mờ hơn (opacity thấp) để phân biệt với liên kết gắn riêng cho đúng việc đó.
+ */
+export function DailyLogItemsView({
+  items,
+  dayMilestoneNames = [],
+  dayVatTuNames = [],
+}: {
+  items: {
+    id: string; label: string; isChecked: boolean; dueDate: string | null;
+    milestoneName: string | null; vatTuName: string | null; workType: string | null;
+  }[];
+  dayMilestoneNames?: string[];
+  dayVatTuNames?: string[];
+}) {
   if (items.length === 0) return null;
+  const today = new Date().toISOString().slice(0, 10);
   return (
     <div className="space-y-0.5 mt-1">
-      {items.map((it) => (
-        <label key={it.id} className="flex items-center gap-2 text-[13px]">
-          <input
-            type="checkbox"
-            checked={it.isChecked}
-            onChange={(e) => toggleDailyLogItem(it.id, e.target.checked)}
-          />
-          <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
-        </label>
-      ))}
+      {items.map((it) => {
+        const isOverdue = !it.isChecked && it.dueDate != null && it.dueDate.slice(0, 10) < today;
+        const fallbackMilestones = it.milestoneName ? [] : dayMilestoneNames;
+        const fallbackVatTu = it.vatTuName ? [] : dayVatTuNames;
+        return (
+          <label key={it.id} className="flex items-center gap-2 text-[13px] flex-wrap">
+            <input
+              type="checkbox"
+              checked={it.isChecked}
+              onChange={(e) => toggleDailyLogItem(it.id, e.target.checked)}
+            />
+            <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
+            {it.workType && (
+              <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-brand whitespace-nowrap font-semibold">
+                {DAILY_LOG_WORK_TYPE[it.workType] ?? it.workType}
+              </span>
+            )}
+            {it.dueDate && (
+              <span
+                className="text-[11px] whitespace-nowrap"
+                style={{ color: isOverdue ? "var(--critical)" : "var(--text-muted)" }}
+              >
+                {isOverdue && "⚠️ "}Hạn {fmtDate(it.dueDate)}
+              </span>
+            )}
+            {it.milestoneName && (
+              <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🔹 {it.milestoneName}</span>
+            )}
+            {it.vatTuName && (
+              <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🧱 {it.vatTuName}</span>
+            )}
+            {fallbackMilestones.map((name) => (
+              <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
+                🔹 {name}
+              </span>
+            ))}
+            {fallbackVatTu.map((name) => (
+              <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
+                🧱 {name}
+              </span>
+            ))}
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -758,5 +933,252 @@ export function ChecklistPanel({
         </button>
       )}
     </div>
+  );
+}
+
+export type MilestoneTaskRow = {
+  id: string;
+  name: string;
+  durationDays: number;
+  responsible: string | null;
+  isDone: boolean;
+};
+
+/** WBS cấp 4: danh sách công việc con của 1 milestone, kèm thời lượng + người phụ trách */
+export function WbsTaskPanel({ milestoneId, tasks }: { milestoneId: string; tasks: MilestoneTaskRow[] }) {
+  const [adding, setAdding] = useState(false);
+  const doneCount = tasks.filter((t) => t.isDone).length;
+  const totalDays = tasks.reduce((s, t) => s + t.durationDays, 0);
+
+  return (
+    <div className="ml-6 mt-1.5 border-l-2 border-grid pl-3">
+      {tasks.length > 0 && (
+        <p className="text-xs text-muted mb-1">
+          WBS công việc: {doneCount}/{tasks.length} xong · tổng ~{totalDays} ngày công
+        </p>
+      )}
+      <div className="space-y-1">
+        {tasks.map((t) => (
+          <div key={t.id} className="flex items-center gap-2 text-[13px] group flex-wrap">
+            <input type="checkbox" checked={t.isDone} onChange={() => toggleMilestoneTask(t.id)} />
+            <span className={t.isDone ? "line-through text-muted" : "text-ink-2"}>{t.name}</span>
+            <span className="text-[11px] text-muted whitespace-nowrap">
+              ~{t.durationDays} ngày{t.responsible && ` · ${t.responsible}`}
+            </span>
+            <button
+              type="button"
+              onClick={() => deleteMilestoneTask(t.id)}
+              className="text-critical text-xs opacity-0 group-hover:opacity-100 ml-auto"
+            >
+              Xóa
+            </button>
+          </div>
+        ))}
+      </div>
+      {adding ? (
+        <form
+          action={async (fd) => {
+            await addMilestoneTask(milestoneId, fd);
+            setAdding(false);
+          }}
+          className="mt-1.5 flex items-center gap-2 flex-wrap"
+        >
+          <Input name="name" required placeholder="Tên công việc..." className="!py-1 text-[13px] flex-1 min-w-[140px]" />
+          <Input name="durationDays" type="number" min={1} defaultValue={1} placeholder="Số ngày" className="!py-1 text-[13px] !w-20" />
+          <Input name="responsible" placeholder="Người phụ trách" className="!py-1 text-[13px] !w-36" />
+          <Button type="submit" variant="primary" className="!py-1">Thêm</Button>
+          <button type="button" onClick={() => setAdding(false)} className="text-xs text-muted">Hủy</button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="text-xs text-brand font-semibold hover:underline mt-1.5"
+        >
+          + Thêm công việc
+        </button>
+      )}
+    </div>
+  );
+}
+
+const MS_SEV: Record<string, "good" | "warning" | "critical" | "neutral"> = {
+  PENDING: "neutral",
+  AWAITING_INSPECTION: "warning",
+  APPROVED: "good",
+  AUTO_APPROVED: "good",
+  REJECTED: "critical",
+};
+
+export type MilestoneRowData = {
+  id: string;
+  name: string;
+  isHoldPoint: boolean;
+  status: string;
+  plannedDate: string | null;
+  requestedAt: string | null;
+  confirmDeadlineHrs: number;
+  lastInspection: { result: string; method: string; confirmedAt: string; notes: string | null } | null;
+  checklistItems: { id: string; label: string; isChecked: boolean }[];
+  tasks: MilestoneTaskRow[];
+};
+
+/**
+ * 1 dòng mốc nghiệm thu — mặc định THU GỌN (không hiện WBS/checklist), bấm mũi tên mới xổ ra.
+ * Tránh cảnh 38 mốc x (3-5 công việc + 3-5 checklist) hiện hết cùng lúc, rất rối mắt/không chuyên nghiệp.
+ */
+export function MilestoneRow({
+  m,
+  now,
+  templates,
+}: {
+  m: MilestoneRowData;
+  now: number;
+  templates: { category: string; items: string[] }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const plannedDate = m.plannedDate ? new Date(m.plannedDate) : null;
+  const deadline = m.requestedAt ? new Date(new Date(m.requestedAt).getTime() + m.confirmDeadlineHrs * 3_600_000) : null;
+  const hoursLeft = deadline ? Math.max(0, Math.round((deadline.getTime() - now) / 3_600_000)) : null;
+  const isLate = plannedDate && plannedDate.getTime() < now && !["APPROVED", "AUTO_APPROVED"].includes(m.status);
+  const doneTasks = m.tasks.filter((t) => t.isDone).length;
+  const doneChecklist = m.checklistItems.filter((c) => c.isChecked).length;
+
+  return (
+    <div className="border border-line rounded-lg px-3 py-2">
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="text-muted shrink-0">
+          {open ? "▾" : "▸"}
+        </button>
+        <span>{m.isHoldPoint ? "⛔" : "🔹"}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-[13.5px]">{m.name}</div>
+          <div className="text-xs text-ink-2">
+            <span style={{ color: isLate ? "var(--critical)" : undefined }}>
+              📅 Dự kiến: {m.plannedDate ? fmtDate(m.plannedDate) : "chưa đặt ngày"}
+              {isLate && " — đã trễ"}
+            </span>
+            {m.status === "AWAITING_INSPECTION" && hoursLeft != null && (
+              <span style={{ color: hoursLeft <= 12 ? "var(--critical)" : undefined }}>
+                {" "}· ⏰ Còn {hoursLeft}h để xác nhận (quá hạn tự động thông qua)
+              </span>
+            )}
+            {m.lastInspection && (
+              <>
+                {" "}· {INSPECTION_RESULT[m.lastInspection.result]} qua {INSPECTION_METHOD[m.lastInspection.method]}{" "}
+                lúc {fmtDateTime(m.lastInspection.confirmedAt)}
+                {m.lastInspection.notes && ` — "${m.lastInspection.notes}"`}
+              </>
+            )}
+            {!open && (m.tasks.length > 0 || m.checklistItems.length > 0) && (
+              <span className="text-muted">
+                {" "}· WBS {doneTasks}/{m.tasks.length} · Checklist {doneChecklist}/{m.checklistItems.length}
+              </span>
+            )}
+          </div>
+        </div>
+        <Tag sev={MS_SEV[m.status]}>{MILESTONE_STATUS[m.status]}</Tag>
+        {(m.status === "PENDING" || m.status === "REJECTED") && <RequestInspectionButton milestoneId={m.id} />}
+        {m.status === "AWAITING_INSPECTION" && (
+          <RecordInspectionForm milestoneId={m.id} milestoneName={m.name} checklistItems={m.checklistItems} />
+        )}
+        <EditMilestoneForm
+          milestone={{
+            id: m.id, name: m.name, isHoldPoint: m.isHoldPoint,
+            confirmDeadlineHrs: m.confirmDeadlineHrs, plannedDate: m.plannedDate,
+          }}
+        />
+      </div>
+      {open && (
+        <>
+          <WbsTaskPanel milestoneId={m.id} tasks={m.tasks} />
+          <ChecklistPanel milestoneId={m.id} milestoneName={m.name} items={m.checklistItems} templates={templates} />
+        </>
+      )}
+    </div>
+  );
+}
+
+export type PhaseCardData = {
+  id: string;
+  sortOrder: number;
+  name: string;
+  type: PhaseType;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  weight: number;
+  progressPct: number;
+  milestones: MilestoneRowData[];
+};
+
+/** 1 giai đoạn — mặc định thu gọn nếu đã hoàn thành 100%, còn lại mở sẵn (đang làm/chưa làm) */
+export function PhaseCard({
+  phase,
+  now,
+  templates,
+}: {
+  phase: PhaseCardData;
+  now: number;
+  templates: { category: string; items: string[] }[];
+}) {
+  const isDone = phase.progressPct >= 100;
+  const [open, setOpen] = useState(!isDone);
+  const sortedMilestones = [...phase.milestones].sort((a, b) => {
+    if (!a.plannedDate && !b.plannedDate) return 0;
+    if (!a.plannedDate) return 1;
+    if (!b.plannedDate) return -1;
+    return new Date(a.plannedDate).getTime() - new Date(b.plannedDate).getTime();
+  });
+
+  return (
+    <Card>
+      <div className="flex items-center gap-3 flex-wrap mb-2">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="text-muted shrink-0">
+          {open ? "▾" : "▸"}
+        </button>
+        <h2 className="font-bold">
+          {phase.sortOrder}. {phase.name}
+        </h2>
+        <span className="text-ink-2 text-[13px] money">
+          {fmtDate(phase.plannedStart)} → {fmtDate(phase.plannedEnd)} · tỷ trọng {phase.weight}%
+        </span>
+        <div className="ml-auto flex gap-2 items-center">
+          <CreateStandardMilestonesButton phaseId={phase.id} phaseType={phase.type} />
+          <CreateMilestoneForm
+            phaseId={phase.id}
+            phaseName={phase.name}
+            defaultDate={phase.plannedEnd}
+            templates={templates}
+          />
+          <UpdatePhaseForm
+            phase={{
+              id: phase.id, name: phase.name, progressPct: phase.progressPct,
+              plannedStart: phase.plannedStart, plannedEnd: phase.plannedEnd,
+            }}
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-1 h-2.5 rounded-full bg-grid overflow-hidden">
+          <div
+            className="h-full rounded-full"
+            style={{ width: `${phase.progressPct}%`, background: "var(--series-1)" }}
+          />
+        </div>
+        <span className="text-[13px] font-bold money w-11 text-right">{phase.progressPct}%</span>
+      </div>
+
+      {open && sortedMilestones.length > 0 && (
+        <div className="space-y-2">
+          {sortedMilestones.map((m) => (
+            <MilestoneRow key={m.id} m={m} now={now} templates={templates} />
+          ))}
+        </div>
+      )}
+      {!open && phase.milestones.length > 0 && (
+        <p className="text-xs text-muted">{phase.milestones.length} mốc — đã thu gọn, bấm ▸ để xem</p>
+      )}
+    </Card>
   );
 }

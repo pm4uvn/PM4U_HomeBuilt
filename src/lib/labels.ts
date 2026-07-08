@@ -122,6 +122,27 @@ export const WEATHER: Record<string, string> = {
   STORM: "🌪️ Bão",
 };
 
+export const DAILY_LOG_WORK_TYPE: Record<string, string> = {
+  LEGAL_DOCS: "Hồ sơ pháp lý",
+  SITE_PREPARATION: "Chuẩn bị mặt bằng",
+  LAND_BOUNDARY: "Ranh đất",
+  NEIGHBOR_CONDITION: "Hiện trạng nhà bên cạnh",
+  GROUNDBREAKING: "Động thổ",
+  DEMOLITION: "Phá dỡ",
+  PILING: "Ép cọc",
+  EXCAVATION: "Đào móng",
+  STRUCTURE_WORK: "Thi công thô",
+  MEP_WORK: "Điện nước (M&E)",
+  WATERPROOFING: "Chống thấm",
+  FINISHING_WORK: "Hoàn thiện",
+  INTERIOR_WORK: "Lắp đặt nội thất",
+  HANDOVER: "Bàn giao / hoàn công",
+  SAFETY: "An toàn lao động",
+  MATERIAL_DELIVERY: "Giao nhận vật tư",
+  ACCEPTANCE: "Nghiệm thu",
+  VARIATION: "Phát sinh",
+};
+
 export const RISK_CATEGORY: Record<string, string> = {
   DESIGN_TECHNICAL: "Thiết kế / kỹ thuật",
   LEGAL_PERMIT: "Pháp lý / giấy phép",

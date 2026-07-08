@@ -4,7 +4,24 @@
  * (src/lib/standard-milestones.ts). Milestone tự tạo tay không có trong danh sách
  * này sẽ không có checklist mặc định — người dùng tự thêm nếu cần.
  */
+import { PRE_CONSTRUCTION_GATE_NAME, PILING_GATE_NAME } from "./standard-milestones";
+
 const EXACT_CHECKLISTS: Record<string, string[]> = {
+  // Cổng kiểm soát — Stage Gate module "Kiểm soát khởi công & nền móng".
+  // Tên các mục dưới đây khớp CHÍNH XÁC với logic chặn đóng giai đoạn trong schedule/actions.ts updatePhase().
+  [PRE_CONSTRUCTION_GATE_NAME]: [
+    "Giấy phép xây dựng",
+    "Thông báo khởi công",
+    "Biên bản bàn giao mặt bằng",
+    "Ranh đất/tim móng/cao độ",
+    "Biên bản hiện trạng nhà bên cạnh (nếu có nhà liền kề)",
+  ],
+  [PILING_GATE_NAME]: [
+    "Nhật ký ép cọc",
+    "Ảnh hiện trường",
+    "Biên bản nghiệm thu",
+    "Xác nhận giám sát",
+  ],
   "Duyệt hồ sơ năng lực nhà thầu": [
     "Đã kiểm tra giấy phép kinh doanh, mã số thuế nhà thầu",
     "Đã tham khảo công trình nhà thầu đã thi công trước đó (đi xem thực tế)",
@@ -115,6 +132,12 @@ const EXACT_CHECKLISTS: Record<string, string[]> = {
     "Thi công đủ số lớp chống thấm theo hướng dẫn NSX",
     "Đã thử ngâm nước tối thiểu 24h không thấm",
   ],
+  "Duyệt báo giá vật tư & nhân công hoàn thiện": [
+    "Đã thu thập báo giá từ tối thiểu 2-3 nhà thầu/nhà cung cấp hoàn thiện",
+    "Báo giá tách rõ đơn giá vật tư và nhân công từng hạng mục",
+    "Đã đối chiếu chủng loại, quy cách vật tư đúng với thiết kế/hợp đồng ban đầu",
+    "Đã chốt tiến độ thi công hoàn thiện gắn với báo giá đã duyệt",
+  ],
   "Nghiệm thu ốp lát gạch nền, tường": [
     "Gạch đúng chủng loại, mã đã duyệt",
     "Mạch gạch đều, thẳng hàng",
@@ -149,6 +172,12 @@ const EXACT_CHECKLISTS: Record<string, string[]> = {
     "Đã ngâm nước tối thiểu 24h",
     "Không phát hiện thấm dột trần bên dưới",
     "Đã chụp ảnh/quay video làm bằng chứng",
+  ],
+  "Duyệt thiết kế nội thất (bản vẽ, phối cảnh 3D)": [
+    "Công năng bố trí nội thất phù hợp nhu cầu sử dụng thực tế",
+    "Đã đối chiếu kích thước bản vẽ với kích thước thô thực tế thi công",
+    "Đã chốt vật liệu, màu sắc, phụ kiện cho từng món nội thất",
+    "Đã duyệt phối cảnh 3D toàn bộ trước khi lên đơn sản xuất",
   ],
   "Nghiệm thu lắp đặt tủ bếp, nội thất gắn liền": [
     "Đúng kích thước, thiết kế đã duyệt",

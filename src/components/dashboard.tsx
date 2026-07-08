@@ -349,7 +349,7 @@ export function DailyStrip({ todayLog }: { todayLog: DashboardData["todayLog"] }
         <span className="text-muted text-[13px]">Chưa ghi nhật ký hôm nay</span>
       )}
       <Link
-        href="/schedule#daily-log"
+        href="/schedule/daily-log"
         className="ml-auto bg-brand text-white text-[13px] font-semibold rounded-lg px-3.5 py-1.5 hover:opacity-90"
       >
         + Ghi nhật ký

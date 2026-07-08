@@ -7,8 +7,9 @@ import { RISK_CATEGORY, RISK_SEVERITY, RISK_PROBABILITY, RISK_RESPONSE_STRATEGY,
 import {
   CreateRiskForm, EditRiskForm, DeleteRiskButton, RiskStatusSelect, CreateNeighborSurveyForm,
   StartIdleWaitForm, StopIdleWaitButton, CreatePilingRecordForm, AddPileItemForm, PileTableToggle,
-  RiskTemplateLibrary, ActionMenu, RiskMitigationChecklist,
+  RiskTemplateLibrary, ActionMenu, RiskMitigationChecklist, AutoRiskAlerts,
 } from "./forms";
+import { computePreConstructionRiskAlerts } from "@/services/preconstruction.service";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function RisksPage() {
     return <Card><EmptyState title="Chưa có dự án" sub="Tạo dự án ở trang Hợp đồng trước" /></Card>;
   }
 
-  const [risks, surveys, idleLogs, pilingRecords, contracts] = await Promise.all([
+  const [risks, surveys, idleLogs, pilingRecords, contracts, autoAlerts] = await Promise.all([
     prisma.riskLog.findMany({
       where: { projectId: project.id },
       include: { mitigationActions: { orderBy: { sortOrder: "asc" } } },
@@ -40,6 +41,7 @@ export default async function RisksPage() {
       include: { piles: { orderBy: { pileNo: "asc" } } },
     }),
     prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: true } }),
+    computePreConstructionRiskAlerts(project.id),
   ]);
 
   const now = new Date();
@@ -61,6 +63,8 @@ export default async function RisksPage() {
           <CreateRiskForm projectId={project.id} />
         </div>
       </header>
+
+      <AutoRiskAlerts projectId={project.id} alerts={autoAlerts} />
 
       <RiskTemplateLibrary projectId={project.id} existingTitles={risks.map((r) => r.title)} />
 

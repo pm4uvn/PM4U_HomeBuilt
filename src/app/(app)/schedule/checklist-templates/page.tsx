@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
 import { Card, EmptyState } from "@/components/ui";
 import {
-  CreateTemplateForm, SeedDefaultTemplatesButton, DeleteTemplateButton,
+  CreateTemplateForm, SeedDefaultTemplatesButton, SeedPreConstructionTemplatesButton, DeleteTemplateButton,
   TemplateItemRow, AddTemplateItemForm,
 } from "./forms";
 import { ScheduleTabs } from "../ScheduleTabs";
@@ -28,7 +28,8 @@ export default async function ChecklistTemplatesPage() {
       <ScheduleTabs />
       <header className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">✅ Mẫu Checklist theo hạng mục</h1>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex gap-2 flex-wrap">
+          <SeedPreConstructionTemplatesButton projectId={project.id} />
           <SeedDefaultTemplatesButton projectId={project.id} />
           <CreateTemplateForm projectId={project.id} />
         </div>
@@ -60,7 +61,13 @@ export default async function ChecklistTemplatesPage() {
               ) : (
                 <div className="divide-y divide-grid">
                   {t.items.map((it) => (
-                    <TemplateItemRow key={it.id} item={{ id: it.id, label: it.label }} />
+                    <TemplateItemRow
+                      key={it.id}
+                      item={{
+                        id: it.id, label: it.label, required: it.required, evidenceRequired: it.evidenceRequired,
+                        evidenceType: it.evidenceType, riskIfMissing: it.riskIfMissing, suggestedModule: it.suggestedModule,
+                      }}
+                    />
                   ))}
                 </div>
               )}
