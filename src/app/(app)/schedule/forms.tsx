@@ -382,7 +382,11 @@ export function RecordInspectionForm({
 type DailyLogPhase = { name: string; milestones: { id: string; name: string }[] };
 type DailyLogItemInput = {
   label: string; checked: boolean; dueDate: string; milestoneId: string; vatTuDuAnId: string; workType: string;
+  documentId: string; contractId: string; pic: string;
 };
+
+export type DailyLogDocumentOption = { id: string; title: string; docType: string };
+export type DailyLogContractOption = { id: string; label: string };
 
 /** Danh sách việc trong ngày, mỗi dòng tách riêng và tick được — thay cho 1 đoạn văn dài gộp chung */
 function DailyLogItemsEditor({
@@ -390,17 +394,36 @@ function DailyLogItemsEditor({
   setItems,
   milestoneOptions,
   vatTuOptions,
+  documentOptions,
+  contractOptions,
+  picOptions,
 }: {
   items: DailyLogItemInput[];
   setItems: (v: DailyLogItemInput[]) => void;
   milestoneOptions: { id: string; name: string; phaseName: string }[];
   vatTuOptions: DailyLogVatTuOption[];
+  documentOptions: DailyLogDocumentOption[];
+  contractOptions: DailyLogContractOption[];
+  picOptions: string[];
 }) {
   function update(i: number, patch: Partial<DailyLogItemInput>) {
     setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
   }
+  // Nhóm theo giai đoạn/nhóm vật tư bằng <optgroup> — danh sách có thể dài (40+ mốc cả dự án), nhóm lại dễ tìm hơn nhiều
+  const milestonesByPhase = Array.from(new Set(milestoneOptions.map((m) => m.phaseName))).map((phaseName) => ({
+    phaseName,
+    items: milestoneOptions.filter((m) => m.phaseName === phaseName),
+  }));
+  const vatTuByGroup = Array.from(new Set(vatTuOptions.map((v) => v.groupName))).map((groupName) => ({
+    groupName,
+    items: vatTuOptions.filter((v) => v.groupName === groupName),
+  }));
   return (
     <div className="space-y-2">
+      {/* datalist dùng chung cho mọi dòng — combobox: gợi ý sẵn nhưng vẫn gõ tên mới được */}
+      <datalist id="daily-log-pic-options">
+        {picOptions.map((p) => <option key={p} value={p} />)}
+      </datalist>
       {items.map((it, i) => (
         <div key={i} className="border border-line rounded-lg p-2 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
@@ -412,6 +435,15 @@ function DailyLogItemsEditor({
               placeholder="Lấy giấy phép chính sao y bản chính..."
               value={it.label}
               onChange={(e) => update(i, { label: e.target.value })}
+            />
+            <Input
+              name="itemPic[]"
+              list="daily-log-pic-options"
+              placeholder="Phụ trách (PIC)..."
+              title="Người/đơn vị phụ trách — chọn gợi ý hoặc gõ tên mới"
+              className="!w-40 shrink-0"
+              value={it.pic}
+              onChange={(e) => update(i, { pic: e.target.value })}
             />
             <Input
               name="itemDueDate[]"
@@ -437,8 +469,12 @@ function DailyLogItemsEditor({
               onChange={(e) => update(i, { milestoneId: e.target.value })}
             >
               <option value="">— Gắn với mốc (tùy chọn) —</option>
-              {milestoneOptions.map((m) => (
-                <option key={m.id} value={m.id}>{m.phaseName} · {m.name}</option>
+              {milestonesByPhase.map((g) => (
+                <optgroup key={g.phaseName} label={g.phaseName}>
+                  {g.items.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </Select>
             <Select
@@ -448,8 +484,12 @@ function DailyLogItemsEditor({
               onChange={(e) => update(i, { vatTuDuAnId: e.target.value })}
             >
               <option value="">— Gắn với vật tư (tùy chọn) —</option>
-              {vatTuOptions.map((v) => (
-                <option key={v.id} value={v.id}>{v.groupName} · {v.name}</option>
+              {vatTuByGroup.map((g) => (
+                <optgroup key={g.groupName} label={g.groupName}>
+                  {g.items.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </Select>
             <Select
@@ -461,12 +501,42 @@ function DailyLogItemsEditor({
               <option value="">— Loại công việc (tùy chọn) —</option>
               {opts(DAILY_LOG_WORK_TYPE)}
             </Select>
+            <Select
+              name="itemDocumentId[]"
+              className="!py-1 text-[12px] !w-auto flex-1 min-w-[140px]"
+              value={it.documentId}
+              onChange={(e) => update(i, { documentId: e.target.value })}
+            >
+              <option value="">— Gắn với hồ sơ (tùy chọn) —</option>
+              {documentOptions.map((d) => (
+                <option key={d.id} value={d.id}>{d.title}</option>
+              ))}
+            </Select>
+            <Select
+              name="itemContractId[]"
+              className="!py-1 text-[12px] !w-auto flex-1 min-w-[140px]"
+              value={it.contractId}
+              onChange={(e) => update(i, { contractId: e.target.value })}
+            >
+              <option value="">— Gắn với hợp đồng (tùy chọn) —</option>
+              {contractOptions.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </Select>
           </div>
         </div>
       ))}
       <button
         type="button"
-        onClick={() => setItems([...items, { label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "" }])}
+        onClick={() =>
+          setItems([
+            ...items,
+            {
+              label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "",
+              documentId: "", contractId: "", pic: "",
+            },
+          ])
+        }
         className="text-brand text-xs font-semibold"
       >
         + Thêm việc
@@ -484,6 +554,9 @@ function DailyLogFields({
   defaultMilestoneIds,
   vatTuOptions = [],
   defaultVatTuIds = [],
+  documentOptions = [],
+  contractOptions = [],
+  picOptions = [],
   defaultItems = [],
   defaults,
 }: {
@@ -492,6 +565,9 @@ function DailyLogFields({
   defaultMilestoneIds: string[];
   vatTuOptions?: DailyLogVatTuOption[];
   defaultVatTuIds?: string[];
+  documentOptions?: DailyLogDocumentOption[];
+  contractOptions?: DailyLogContractOption[];
+  picOptions?: string[];
   defaultItems?: DailyLogItemInput[];
   defaults?: {
     weather?: string;
@@ -502,7 +578,12 @@ function DailyLogFields({
   };
 }) {
   const [items, setItems] = useState<DailyLogItemInput[]>(
-    defaultItems.length > 0 ? defaultItems : [{ label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "" }],
+    defaultItems.length > 0
+      ? defaultItems
+      : [{
+          label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "",
+          documentId: "", contractId: "", pic: "",
+        }],
   );
   const phasesWithMilestones = phases.filter((p) => p.milestones.length > 0);
   const milestoneOptions = phases.flatMap((p) => p.milestones.map((m) => ({ id: m.id, name: m.name, phaseName: p.name })));
@@ -529,7 +610,15 @@ function DailyLogFields({
         Tính là ngày gia hạn hợp lệ (mưa bão làm ngưng thi công)
       </label>
       <Field label="Công việc trong ngày (mỗi dòng 1 việc, tick khi xong)">
-        <DailyLogItemsEditor items={items} setItems={setItems} milestoneOptions={milestoneOptions} vatTuOptions={vatTuOptions} />
+        <DailyLogItemsEditor
+          items={items}
+          setItems={setItems}
+          milestoneOptions={milestoneOptions}
+          vatTuOptions={vatTuOptions}
+          documentOptions={documentOptions}
+          contractOptions={contractOptions}
+          picOptions={picOptions}
+        />
       </Field>
       <Field label="Ghi chú thêm (tuỳ chọn)">
         <Textarea name="workDescription" rows={2} placeholder="Ghi chú chung khác..." defaultValue={defaults?.workDescription ?? ""} />
@@ -587,11 +676,17 @@ export function DailyLogForm({
   phases = [],
   defaultMilestoneIds = [],
   vatTuOptions = [],
+  documentOptions = [],
+  contractOptions = [],
+  picOptions = [],
 }: {
   projectId: string;
   phases?: DailyLogPhase[];
   defaultMilestoneIds?: string[];
   vatTuOptions?: DailyLogVatTuOption[];
+  documentOptions?: DailyLogDocumentOption[];
+  contractOptions?: DailyLogContractOption[];
+  picOptions?: string[];
 }) {
   const today = new Date().toISOString().slice(0, 10);
   return (
@@ -603,6 +698,9 @@ export function DailyLogForm({
             phases={phases}
             defaultMilestoneIds={defaultMilestoneIds}
             vatTuOptions={vatTuOptions}
+            documentOptions={documentOptions}
+            contractOptions={contractOptions}
+            picOptions={picOptions}
           />
           <div className="pt-2"><Button type="submit" variant="primary" className="w-full">Lưu nhật ký</Button></div>
         </form>
@@ -624,6 +722,7 @@ export type DailyLogRow = {
   items: {
     id: string; label: string; isChecked: boolean; dueDate: string | null;
     milestoneId: string | null; vatTuDuAnId: string | null; workType: string | null;
+    documentId: string | null; contractId: string | null; pic: string | null;
   }[];
 };
 
@@ -632,10 +731,16 @@ export function EditDailyLogForm({
   log,
   phases = [],
   vatTuOptions = [],
+  documentOptions = [],
+  contractOptions = [],
+  picOptions = [],
 }: {
   log: DailyLogRow;
   phases?: DailyLogPhase[];
   vatTuOptions?: DailyLogVatTuOption[];
+  documentOptions?: DailyLogDocumentOption[];
+  contractOptions?: DailyLogContractOption[];
+  picOptions?: string[];
 }) {
   return (
     <ModalButton label="Sửa" variant="default" title={`Sửa nhật ký ${fmtDate(log.logDate)}`}>
@@ -647,9 +752,13 @@ export function EditDailyLogForm({
             defaultMilestoneIds={log.milestoneIds}
             vatTuOptions={vatTuOptions}
             defaultVatTuIds={log.vatTuIds}
+            documentOptions={documentOptions}
+            contractOptions={contractOptions}
+            picOptions={picOptions}
             defaultItems={log.items.map((it) => ({
               label: it.label, checked: it.isChecked, dueDate: it.dueDate?.slice(0, 10) ?? "",
               milestoneId: it.milestoneId ?? "", vatTuDuAnId: it.vatTuDuAnId ?? "", workType: it.workType ?? "",
+              documentId: it.documentId ?? "", contractId: it.contractId ?? "", pic: it.pic ?? "",
             }))}
             defaults={{
               weather: log.weather,
@@ -679,6 +788,7 @@ export function DailyLogItemsView({
   items: {
     id: string; label: string; isChecked: boolean; dueDate: string | null;
     milestoneName: string | null; vatTuName: string | null; workType: string | null;
+    documentTitle: string | null; contractLabel: string | null; pic: string | null;
   }[];
   dayMilestoneNames?: string[];
   dayVatTuNames?: string[];
@@ -686,49 +796,69 @@ export function DailyLogItemsView({
   if (items.length === 0) return null;
   const today = new Date().toISOString().slice(0, 10);
   return (
-    <div className="space-y-0.5 mt-1">
+    <div className="space-y-1.5 mt-1">
       {items.map((it) => {
         const isOverdue = !it.isChecked && it.dueDate != null && it.dueDate.slice(0, 10) < today;
         const fallbackMilestones = it.milestoneName ? [] : dayMilestoneNames;
         const fallbackVatTu = it.vatTuName ? [] : dayVatTuNames;
+        const hasBadges =
+          it.workType || it.dueDate || it.milestoneName || it.vatTuName || it.documentTitle || it.contractLabel || it.pic ||
+          fallbackMilestones.length > 0 || fallbackVatTu.length > 0;
         return (
-          <label key={it.id} className="flex items-center gap-2 text-[13px] flex-wrap">
+          <div key={it.id} className="flex items-start gap-2 text-[13px]">
             <input
               type="checkbox"
+              className="mt-0.5 shrink-0"
               checked={it.isChecked}
               onChange={(e) => toggleDailyLogItem(it.id, e.target.checked)}
             />
-            <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
-            {it.workType && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-brand whitespace-nowrap font-semibold">
-                {DAILY_LOG_WORK_TYPE[it.workType] ?? it.workType}
-              </span>
-            )}
-            {it.dueDate && (
-              <span
-                className="text-[11px] whitespace-nowrap"
-                style={{ color: isOverdue ? "var(--critical)" : "var(--text-muted)" }}
-              >
-                {isOverdue && "⚠️ "}Hạn {fmtDate(it.dueDate)}
-              </span>
-            )}
-            {it.milestoneName && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🔹 {it.milestoneName}</span>
-            )}
-            {it.vatTuName && (
-              <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🧱 {it.vatTuName}</span>
-            )}
-            {fallbackMilestones.map((name) => (
-              <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
-                🔹 {name}
-              </span>
-            ))}
-            {fallbackVatTu.map((name) => (
-              <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
-                🧱 {name}
-              </span>
-            ))}
-          </label>
+            <div className="min-w-0 flex-1">
+              <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
+              {hasBadges && (
+                // Luôn xuống dòng riêng bên dưới nhãn — tránh badge dồn/lệch dòng khác nhau tùy độ dài nhãn
+                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                  {it.workType && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-brand whitespace-nowrap font-semibold">
+                      {DAILY_LOG_WORK_TYPE[it.workType] ?? it.workType}
+                    </span>
+                  )}
+                  {it.pic && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">👤 {it.pic}</span>
+                  )}
+                  {it.milestoneName && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🔹 {it.milestoneName}</span>
+                  )}
+                  {it.vatTuName && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🧱 {it.vatTuName}</span>
+                  )}
+                  {it.documentTitle && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">📄 {it.documentTitle}</span>
+                  )}
+                  {it.contractLabel && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">📋 {it.contractLabel}</span>
+                  )}
+                  {fallbackMilestones.map((name) => (
+                    <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
+                      🔹 {name}
+                    </span>
+                  ))}
+                  {fallbackVatTu.map((name) => (
+                    <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
+                      🧱 {name}
+                    </span>
+                  ))}
+                  {it.dueDate && (
+                    <span
+                      className="text-[11px] whitespace-nowrap"
+                      style={{ color: isOverdue ? "var(--critical)" : "var(--text-muted)" }}
+                    >
+                      {isOverdue && "⚠️ "}Hạn {fmtDate(it.dueDate)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         );
       })}
     </div>

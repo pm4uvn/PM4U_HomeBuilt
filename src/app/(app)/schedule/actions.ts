@@ -394,7 +394,7 @@ export async function recordInspectionAction(milestoneId: string, fd: FormData) 
   revalidatePath("/contracts");
 }
 
-/** Tách các dòng việc trong ngày từ form (mảng itemLabel[] / itemChecked[] / itemDueDate[] / itemMilestoneId[] / itemVatTuId[] / itemWorkType[] cùng chỉ số) */
+/** Tách các dòng việc trong ngày từ form (mảng itemLabel[] / itemChecked[] / itemDueDate[] / itemMilestoneId[] / itemVatTuId[] / itemWorkType[] / itemDocumentId[] / itemContractId[] / itemPic[] cùng chỉ số) */
 function parseDailyLogItems(fd: FormData) {
   const labels = fd.getAll("itemLabel[]").map(String);
   const checked = fd.getAll("itemChecked[]").map(String);
@@ -402,6 +402,9 @@ function parseDailyLogItems(fd: FormData) {
   const milestoneIds = fd.getAll("itemMilestoneId[]").map(String);
   const vatTuIds = fd.getAll("itemVatTuId[]").map(String);
   const workTypes = fd.getAll("itemWorkType[]").map(String);
+  const documentIds = fd.getAll("itemDocumentId[]").map(String);
+  const contractIds = fd.getAll("itemContractId[]").map(String);
+  const pics = fd.getAll("itemPic[]").map(String);
   return labels
     .map((label, i) => ({
       label: label.trim(),
@@ -410,6 +413,9 @@ function parseDailyLogItems(fd: FormData) {
       milestoneId: milestoneIds[i] ? milestoneIds[i] : null,
       vatTuDuAnId: vatTuIds[i] ? BigInt(vatTuIds[i]) : null,
       workType: workTypes[i] ? (workTypes[i] as never) : null,
+      documentId: documentIds[i] ? documentIds[i] : null,
+      contractId: contractIds[i] ? contractIds[i] : null,
+      pic: pics[i]?.trim() || null,
       sortOrder: i,
     }))
     .filter((it) => it.label);

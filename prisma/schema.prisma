@@ -248,6 +248,7 @@ model Contract {
   variations      Variation[]
   idleWaitLogs    IdleWaitLog[]
   documents       Document[]
+  dailyLogItems   DailyLogItem[] // các việc trong nhật ký gắn trực tiếp với hợp đồng này
 
   @@unique([projectId, code])
 }
@@ -585,7 +586,12 @@ model DailyLogItem {
   milestone   Milestone? @relation(fields: [milestoneId], references: [id])
   vatTuDuAnId BigInt?    // việc này thuộc đúng 1 vật tư nào (tùy chọn)
   vatTuDuAn   VatTuDuAn? @relation(fields: [vatTuDuAnId], references: [id])
+  documentId  String?    // việc này liên quan đúng 1 hồ sơ nào (tùy chọn) — VD giấy phép, biên bản
+  document    Document?  @relation(fields: [documentId], references: [id])
+  contractId  String?    // việc này liên quan đúng 1 hợp đồng nào (tùy chọn)
+  contract    Contract?  @relation(fields: [contractId], references: [id])
   workType    DailyLogWorkType? // loại công việc — dùng lọc/báo cáo theo nhóm (Pháp lý, Mặt bằng, Ép cọc...)
+  pic         String?    // người/đơn vị phụ trách (PIC) — combobox gợi ý từ stakeholder/nhà thầu, vẫn gõ tên mới được
   sortOrder   Int        @default(0)
 }
 
@@ -794,6 +800,7 @@ model Document {
   penaltyEvent       PenaltyEvent? @relation(fields: [penaltyEventId], references: [id])
   ownerPurchaseItemId String?
   ownerPurchaseItem  OwnerPurchaseItem? @relation(fields: [ownerPurchaseItemId], references: [id])
+  dailyLogItems      DailyLogItem[] // các việc trong nhật ký gắn trực tiếp với hồ sơ này
 
   uploadedAt DateTime @default(now())
 

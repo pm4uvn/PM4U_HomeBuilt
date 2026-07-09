@@ -7,7 +7,7 @@ import { fmtDate } from "@/lib/format";
 import { WEATHER } from "@/lib/labels";
 import {
   DailyLogForm, EditDailyLogForm, DeleteDailyLogButton, DailyLogItemsView, DailyLogPhotos,
-  type DailyLogVatTuOption,
+  type DailyLogVatTuOption, type DailyLogDocumentOption, type DailyLogContractOption,
 } from "../forms";
 import { ScheduleTabs } from "../ScheduleTabs";
 
@@ -22,7 +22,7 @@ export default async function DailyLogPage() {
 
   const duAn = await prisma.duAn.findFirst({ orderBy: { id: "asc" } });
 
-  const [phases, dailyLogs, vatTuDuAnList] = await Promise.all([
+  const [phases, dailyLogs, vatTuDuAnList, documents, contracts, stakeholders, existingPics] = await Promise.all([
     prisma.phase.findMany({
       where: { projectId: project.id },
       orderBy: { sortOrder: "asc" },
@@ -40,6 +40,8 @@ export default async function DailyLogPage() {
           include: {
             milestone: { select: { name: true } },
             vatTuDuAn: { select: { vatTu: { select: { tenVatTu: true } } } },
+            document: { select: { title: true } },
+            contract: { select: { code: true, title: true, vendor: { select: { name: true } } } },
           },
         },
         documents: { where: { docType: "SITE_PHOTO" }, orderBy: { uploadedAt: "asc" } },
@@ -52,6 +54,22 @@ export default async function DailyLogPage() {
           orderBy: [{ vatTu: { nhom: { thuTu: "asc" } } }, { id: "asc" }],
         })
       : Promise.resolve([]),
+    prisma.document.findMany({
+      where: { projectId: project.id },
+      orderBy: { uploadedAt: "desc" },
+      select: { id: true, title: true, docType: true },
+    }),
+    prisma.contract.findMany({
+      where: { projectId: project.id },
+      include: { vendor: { select: { name: true } } },
+      orderBy: { code: "asc" },
+    }),
+    prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
+    prisma.dailyLogItem.findMany({
+      where: { dailyLog: { projectId: project.id }, pic: { not: null } },
+      select: { pic: true },
+      distinct: ["pic"],
+    }),
   ]);
 
   const phasesForDailyLog = phases.map((p) => ({
@@ -63,6 +81,21 @@ export default async function DailyLogPage() {
     name: v.vatTu.tenVatTu,
     groupName: v.vatTu.nhom.tenNhomVatTu,
   }));
+  const documentOptions: DailyLogDocumentOption[] = documents.map((d) => ({ id: d.id, title: d.title, docType: d.docType }));
+  const contractOptions: DailyLogContractOption[] = contracts.map((c) => ({
+    id: c.id,
+    label: `${c.code} — ${c.title} (${c.vendor.name})`,
+  }));
+  // Gợi ý PIC: vai trò phổ biến luôn có sẵn + stakeholder + nhà thầu trong hợp đồng + tên đã gõ trước đó — vẫn cho gõ tên mới
+  const COMMON_PIC_ROLES = ["Chủ đầu tư", "Giám sát công trình", "Kỹ sư kết cấu", "Kỹ sư M&E", "Đơn vị thiết kế"];
+  const picOptions = Array.from(
+    new Set([
+      ...COMMON_PIC_ROLES,
+      ...stakeholders.map((s) => s.name),
+      ...contracts.map((c) => c.vendor.name),
+      ...existingPics.map((p) => p.pic).filter((p): p is string => !!p),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayLog = dailyLogs.find((d) => d.logDate.toISOString().slice(0, 10) === todayStr);
 
@@ -89,6 +122,9 @@ export default async function DailyLogPage() {
             phases={phasesForDailyLog}
             defaultMilestoneIds={todayLog?.milestones.map((m) => m.id) ?? []}
             vatTuOptions={vatTuOptions}
+            documentOptions={documentOptions}
+            contractOptions={contractOptions}
+            picOptions={picOptions}
           />
         </div>
       </header>
@@ -105,7 +141,6 @@ export default async function DailyLogPage() {
                 <th className="py-1 pr-2 font-semibold">Thời tiết</th>
                 <th className="py-1 pr-2 font-semibold">Nhân công</th>
                 <th className="py-1 pr-2 font-semibold">Công việc</th>
-                <th className="py-1 pr-2 font-semibold">Gia hạn hợp lệ</th>
                 <th className="py-1 font-semibold"></th>
               </tr>
             </thead>
@@ -116,6 +151,9 @@ export default async function DailyLogPage() {
                   <td className="py-2 pr-2">
                     {WEATHER[d.weather]}
                     {d.rainHours && Number(d.rainHours) > 0 ? ` (${Number(d.rainHours)}h)` : ""}
+                    {d.isForceMajeure && (
+                      <div className="mt-0.5"><Tag sev="warning">+1 ngày gia hạn</Tag></div>
+                    )}
                   </td>
                   <td className="py-2 pr-2">{d.workerCount} người</td>
                   <td className="py-2 pr-2 text-ink-2">
@@ -127,6 +165,9 @@ export default async function DailyLogPage() {
                           milestoneName: it.milestone?.name ?? null,
                           vatTuName: it.vatTuDuAn?.vatTu.tenVatTu ?? null,
                           workType: it.workType,
+                          documentTitle: it.document?.title ?? null,
+                          contractLabel: it.contract ? `${it.contract.code} — ${it.contract.title} (${it.contract.vendor.name})` : null,
+                          pic: it.pic,
                         }))}
                         dayMilestoneNames={d.milestones.map((m) => m.name)}
                         dayVatTuNames={d.vatTuDuAn.map((v) => v.vatTu.tenVatTu)}
@@ -155,7 +196,6 @@ export default async function DailyLogPage() {
                     )}
                     <DailyLogPhotos dailyLogId={d.id} projectId={project.id} photos={photosByLog.get(d.id) ?? []} />
                   </td>
-                  <td className="py-2 pr-2">{d.isForceMajeure ? <Tag sev="warning">+1 ngày</Tag> : "—"}</td>
                   <td className="py-2">
                     <div className="flex gap-2 justify-end whitespace-nowrap">
                       <EditDailyLogForm
@@ -174,10 +214,14 @@ export default async function DailyLogPage() {
                             dueDate: it.dueDate?.toISOString() ?? null,
                             milestoneId: it.milestoneId, vatTuDuAnId: it.vatTuDuAnId?.toString() ?? null,
                             workType: it.workType,
+                            documentId: it.documentId, contractId: it.contractId, pic: it.pic,
                           })),
                         }}
                         phases={phasesForDailyLog}
                         vatTuOptions={vatTuOptions}
+                        documentOptions={documentOptions}
+                        contractOptions={contractOptions}
+                        picOptions={picOptions}
                       />
                       <DeleteDailyLogButton id={d.id} logDate={d.logDate.toISOString()} />
                     </div>
