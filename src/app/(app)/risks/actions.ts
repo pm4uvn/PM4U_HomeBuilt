@@ -16,6 +16,7 @@ const dateOrNull = (fd: FormData, k: string) => (str(fd, k) ? new Date(str(fd, k
 
 function revalidate() {
   revalidatePath("/risks");
+  revalidatePath("/schedule/todo");
   revalidatePath("/");
 }
 

@@ -20,6 +20,8 @@ const dateOrNull = (fd: FormData, k: string) => (str(fd, k) ? new Date(str(fd, k
 
 function revalidate() {
   revalidatePath("/schedule");
+  revalidatePath("/schedule/daily-log");
+  revalidatePath("/schedule/todo");
   revalidatePath("/");
 }
 
@@ -344,13 +346,18 @@ export async function deleteChecklistItem(itemId: string) {
   revalidate();
 }
 
-/** Tick nhanh 1 công việc con trong WBS của milestone — như checklist nhật ký */
+/**
+ * Tick nhanh 1 công việc con trong WBS của milestone — như checklist nhật ký.
+ * Đồng bộ luôn percentComplete (0/100) để Gantt chi tiết và Detail Plan luôn khớp nhau —
+ * cả 2 tab đọc chung 1 bản ghi MilestoneTask, chỉ cần mọi đường ghi đều cập nhật cả 2 field.
+ */
 export async function toggleMilestoneTask(taskId: string) {
   await requireUser();
   const task = await prisma.milestoneTask.findUniqueOrThrow({ where: { id: taskId } });
+  const willBeDone = !task.isDone;
   await prisma.milestoneTask.update({
     where: { id: taskId },
-    data: { isDone: !task.isDone, doneAt: !task.isDone ? new Date() : null },
+    data: { isDone: willBeDone, doneAt: willBeDone ? new Date() : null, percentComplete: willBeDone ? 100 : 0 },
   });
   revalidate();
 }
@@ -373,6 +380,25 @@ export async function addMilestoneTask(milestoneId: string, fd: FormData) {
 export async function deleteMilestoneTask(taskId: string) {
   await requireUser();
   await prisma.milestoneTask.delete({ where: { id: taskId } });
+  revalidate();
+}
+
+/** Sửa nhanh Hạn/PIC/% của 1 việc WBS ngay trên Gantt chi tiết — click-to-edit, tự lưu */
+export async function updateMilestoneTaskFields(
+  taskId: string,
+  data: { dueDate?: string | null; responsible?: string | null; percentComplete?: number },
+) {
+  await requireUser();
+  const patch: { dueDate?: Date | null; responsible?: string | null; percentComplete?: number; isDone?: boolean; doneAt?: Date | null } = {};
+  if (data.dueDate !== undefined) patch.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+  if (data.responsible !== undefined) patch.responsible = data.responsible || null;
+  if (data.percentComplete !== undefined) {
+    const pct = Math.max(0, Math.min(100, Math.round(data.percentComplete)));
+    patch.percentComplete = pct;
+    patch.isDone = pct >= 100;
+    patch.doneAt = pct >= 100 ? new Date() : null;
+  }
+  await prisma.milestoneTask.update({ where: { id: taskId }, data: patch });
   revalidate();
 }
 

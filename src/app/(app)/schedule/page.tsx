@@ -10,6 +10,7 @@ import {
 } from "./forms";
 import { ScheduleTabs } from "./ScheduleTabs";
 import { PlanModeToggle } from "./PlanModeToggle";
+import { DetailGantt, type DetailGanttPhase } from "./DetailGantt";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function SchedulePage() {
   // Compute-on-read: quá 48h chưa xác nhận -> tự động thông qua
   await resolveExpiredHoldPoints(project.id);
 
-  const [phases, checklistTemplates] = await Promise.all([
+  const [phases, checklistTemplates, stakeholders, contracts] = await Promise.all([
     prisma.phase.findMany({
       where: { projectId: project.id },
       orderBy: { sortOrder: "asc" },
@@ -42,11 +43,24 @@ export default async function SchedulePage() {
       include: { items: { orderBy: { sortOrder: "asc" } } },
       orderBy: { category: "asc" },
     }),
+    prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
+    prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } } }),
   ]);
   const templatesForForms = checklistTemplates.map((t) => ({
     category: t.category,
     items: t.items.map((i) => i.label),
   }));
+
+  // Gợi ý PIC cho Gantt chi tiết: vai trò phổ biến + stakeholder + nhà thầu + tên đã gõ trong WBS — vẫn cho gõ tên mới (giống combobox PIC ở Nhật ký)
+  const COMMON_PIC_ROLES = ["Chủ đầu tư", "Giám sát công trình", "Kỹ sư kết cấu", "Kỹ sư M&E", "Đơn vị thiết kế"];
+  const ganttPicOptions = Array.from(
+    new Set([
+      ...COMMON_PIC_ROLES,
+      ...stakeholders.map((s) => s.name),
+      ...contracts.map((c) => c.vendor.name),
+      ...phases.flatMap((p) => p.milestones.flatMap((m) => m.tasks.map((t) => t.responsible))).filter((p): p is string => !!p),
+    ]),
+  ).sort((a, b) => a.localeCompare(b));
 
   const now = Date.now();
 
@@ -62,6 +76,26 @@ export default async function SchedulePage() {
       holdPoint: holdPoint ? { name: holdPoint.name, status: holdPoint.status } : null,
     };
   });
+
+  const detailGanttPhases: DetailGanttPhase[] = phases.map((p) => ({
+    id: p.id,
+    sortOrder: p.sortOrder,
+    name: p.name,
+    plannedStart: p.plannedStart?.toISOString() ?? null,
+    plannedEnd: p.plannedEnd?.toISOString() ?? null,
+    progressPct: Number(p.progressPct),
+    milestones: p.milestones.map((m) => ({
+      id: m.id,
+      name: m.name,
+      isHoldPoint: m.isHoldPoint,
+      status: m.status,
+      plannedDate: m.plannedDate?.toISOString() ?? null,
+      tasks: m.tasks.map((t) => ({
+        id: t.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, isDone: t.isDone,
+        dueDate: t.dueDate?.toISOString() ?? null, percentComplete: t.percentComplete,
+      })),
+    })),
+  }));
 
   return (
     <div className="space-y-3">
@@ -85,6 +119,7 @@ export default async function SchedulePage() {
       ) : (
         <PlanModeToggle
           master={<GanttChart phases={ganttPhases} />}
+          detailGantt={<DetailGantt phases={detailGanttPhases} picOptions={ganttPicOptions} />}
           detail={
             <>
               {phases.map((phase) => (
@@ -120,9 +155,11 @@ export default async function SchedulePage() {
                       checklistItems: m.checklistItems.map((c) => ({ id: c.id, label: c.label, isChecked: c.isChecked })),
                       tasks: m.tasks.map((t) => ({
                         id: t.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, isDone: t.isDone,
+                        dueDate: t.dueDate?.toISOString() ?? null, percentComplete: t.percentComplete,
                       })),
                     })),
                   }}
+                  picOptions={ganttPicOptions}
                 />
               ))}
             </>

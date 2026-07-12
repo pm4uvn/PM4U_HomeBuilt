@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/schedule", label: "Giai đoạn & Nghiệm thu" },
+  { href: "/schedule/todo", label: "☑️ Việc cần làm" },
   { href: "/schedule/daily-log", label: "📆 Nhật ký" },
   { href: "/schedule/checklist-templates", label: "✅ Mẫu Checklist" },
   { href: "/schedule/knowledge", label: "📚 Kiến thức" },

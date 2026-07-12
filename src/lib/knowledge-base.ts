@@ -8,6 +8,7 @@ export type KnowledgeArticle = {
   topic: string;
   summary: string;
   points: string[];
+  images?: string[]; // đường dẫn tĩnh trong /public/knowledge/<slug>/...
 };
 
 export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
@@ -23,6 +24,7 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Đã chuẩn bị điện nước tạm phục vụ thi công",
       "Đã thông báo khởi công cho chính quyền địa phương và các hộ liền kề",
     ],
+    images: ["/knowledge/chuan-bi-truoc-khi-thi-cong/02_checklist_chuan_bi_truoc_thi_cong.jpg"],
   },
   {
     topic: "Bảng tiến độ thi công",
@@ -46,6 +48,7 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Nên thông báo/thỏa thuận thêm với các hộ liền kề về thời gian, giờ giấc thi công để tránh khiếu nại",
       "Thời điểm thông báo: trước ngày khởi công thực tế theo quy định của địa phương (thường vài ngày)",
     ],
+    images: ["/knowledge/thong-bao-khoi-cong/01_mau_thong_bao_khoi_cong_cong_trinh.jpg"],
   },
   {
     topic: "Điều kiện được khởi công",
@@ -71,6 +74,13 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Lập biên bản xác định ranh đất, tim móng, cao độ có chữ ký của đơn vị trắc đạc/thi công",
       "Đây là bước bắt buộc trước khi đào móng — sai ranh đất có thể dẫn đến buộc phá dỡ phần vi phạm",
     ],
+    images: [
+      "/knowledge/xac-dinh-ranh-dat/01_trac_dac_dinh_vi_tim_coc_nha_pho.jpg",
+      "/knowledge/xac-dinh-ranh-dat/02_do_ranh_dat_gps_rtk_nha_pho.jpg",
+      "/knowledge/xac-dinh-ranh-dat/03_cam_moc_ranh_dat_cu_chi.jpg",
+      "/knowledge/xac-dinh-ranh-dat/04_moc_cao_do_may_thuy_binh.jpg",
+      "/knowledge/xac-dinh-ranh-dat/04_anh_bang_chung_ranh_dat_va_moc_ban_giao.jpg",
+    ],
   },
   {
     topic: "Ghi nhận hiện trạng nhà kế bên",
@@ -82,6 +92,15 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Nếu chủ nhà liền kề không hợp tác, vẫn nên chụp ảnh/quay video từ bên ngoài và lập vi bằng nếu cần",
       "Lưu hồ sơ vào mục Hồ sơ dự án, gắn với module Rủi ro để dễ tra cứu khi có khiếu nại",
       "Khảo sát tương tự cho hạ tầng công cộng lân cận (vỉa hè, đường ống) nếu công trình sát ranh",
+    ],
+    images: [
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/01_mat_tien_nha_ke_ben_cong_trinh_lien_ke.png",
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/02_nha_moi_xay_sat_nha_ke_ben.png",
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/03_vet_nut_tuong_can_canh_mau_1.png",
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/04_vet_nut_tuong_can_canh_mau_2.png",
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/05_hien_trang_tuong_rao_nha_ke_ben.png",
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/06_hien_trang_mat_dung_nha_lan_can.png",
+      "/knowledge/ghi-nhan-hien-trang-nha-ke-ben/05_noi_dung_ghi_nhan_hien_trang_nha_ke_ben.jpg",
     ],
   },
   {
@@ -95,6 +114,7 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Có thể là CĐT tự giám sát (nhà nhỏ) hoặc thuê đơn vị giám sát chuyên nghiệp (khuyến khích với nhà nhiều tầng)",
       "Giám sát độc lập với nhà thầu thi công để đảm bảo tính khách quan",
     ],
+    images: ["/knowledge/giam-sat-thi-cong/03_nhat_ky_cong_trinh_tren_app_homebuild.jpg"],
   },
   {
     topic: "Giám sát tác giả",
@@ -117,6 +137,11 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Chuẩn bị đầy đủ mặt bằng, hàng rào, biển báo công trình trước ngày động thổ",
       "Chụp ảnh/lưu hồ sơ ngày động thổ — mốc thời gian quan trọng để tính tiến độ hợp đồng",
     ],
+    images: [
+      "/knowledge/dong-tho-khoi-cong/anh-1.jpg",
+      "/knowledge/dong-tho-khoi-cong/anh-2.jpg",
+      "/knowledge/dong-tho-khoi-cong/anh-3.jpg",
+    ],
   },
   {
     topic: "Chuẩn bị mặt bằng",
@@ -128,6 +153,13 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Xác định vị trí tập kết vật tư, kho bãi tạm, nhà vệ sinh công nhân",
       "Đấu nối điện nước tạm phục vụ thi công",
       "Nếu thuê/mượn mặt bằng của bên thứ ba, cần có biên bản bàn giao mặt bằng rõ ràng",
+    ],
+    images: [
+      "/knowledge/chuan-bi-mat-bang/03_wc_di_dong_cong_truong.jpg",
+      "/knowledge/chuan-bi-mat-bang/04_cong_nhan_day_du_mu_bao_ho_ao_phan_quang.jpg",
+      "/knowledge/chuan-bi-mat-bang/06_may_moc_vat_tu_trong_hem_nho.jpg",
+      "/knowledge/chuan-bi-mat-bang/07_tuong_rao_hien_trang_khu_vuc_giap_ranh.png",
+      "/knowledge/chuan-bi-mat-bang/08_mat_tien_cong_trinh_lien_ke_can_che_chan.png",
     ],
   },
   {
@@ -141,6 +173,11 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Xử lý phế thải xây dựng đúng nơi quy định, không đổ bừa bãi",
       "Ghi nhận hiện trạng nhà lân cận TRƯỚC khi phá dỡ (tương tự trước khi ép cọc)",
     ],
+    images: [
+      "/knowledge/pha-do-cong-trinh-cu/01_hien_trang_mat_bang_sau_pha_do.jpg",
+      "/knowledge/pha-do-cong-trinh-cu/02_may_dao_pha_do_chuan_bi_dao_mong.jpg",
+      "/knowledge/pha-do-cong-trinh-cu/10_nha_cu_truoc_pha_do_dao_mong.jpg",
+    ],
   },
   {
     topic: "Gia cố nền móng khi thi công tầng hầm",
@@ -152,6 +189,11 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Quan trắc lún, chuyển vị công trình lân cận trong suốt quá trình đào và thi công tầng hầm",
       "Có phương án thoát nước, chống ngập hố móng trong mùa mưa",
       "Đây là hạng mục rủi ro cao nhất về mặt an toàn — bắt buộc có biện pháp thi công được duyệt trước khi đào",
+    ],
+    images: [
+      "/knowledge/gia-co-nen-mong-tang-ham/03_dao_ham_mong_co_cu_larsen_giang_chong.jpg",
+      "/knowledge/gia-co-nen-mong-tang-ham/08_cu_larsen_giang_chong_ham_mong.jpg",
+      "/knowledge/gia-co-nen-mong-tang-ham/05_he_giang_chong_an_toan_ho_mong.jpg",
     ],
   },
   {
@@ -176,6 +218,11 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Theo dõi lực ép, độ sâu từng cây cọc — lập nhật ký ép cọc đầy đủ làm hồ sơ nghiệm thu",
       "Xử lý mối nối cọc đúng kỹ thuật (hàn, bản mã) nếu phải nối nhiều đoạn cọc",
     ],
+    images: [
+      "/knowledge/coc-be-tong-cot-thep-ly-tam/04_coc_be_tong_vuong_tap_ket.jpg",
+      "/knowledge/coc-be-tong-cot-thep-ly-tam/05_coc_ly_tam_D300_tap_ket.jpg",
+      "/knowledge/coc-be-tong-cot-thep-ly-tam/05_dau_coc_sau_dao_mong.jpg",
+    ],
   },
   {
     topic: "Ép cọc neo, ép tải, khoan nhồi",
@@ -187,6 +234,13 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "Ép neo/ép tải phù hợp nhà phố 1-5 tầng; khoan nhồi thường dùng cho công trình lớn hơn hoặc nền đất đặc biệt",
       "Rung chấn khi ép cọc (đặc biệt ép tải) có thể ảnh hưởng nhà lân cận — cần khảo sát hiện trạng trước",
       "Luôn yêu cầu biên bản ép cọc + biểu đồ lực ép cho từng cây, lưu làm hồ sơ nghiệm thu",
+    ],
+    images: [
+      "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/01_cong_nhan_thi_cong_long_sat_coc_khoan_nhoi.jpg",
+      "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/02_ep_neo_trong_hem_nho.jpg",
+      "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/03_ep_tai_coc_be_tong_vuong.jpg",
+      "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/07_coc_khoan_nhoi_D400_chong_sat_lo.jpg",
+      "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/10_can_canh_long_thep_coc_khoan_nhoi.jpg",
     ],
   },
 ];

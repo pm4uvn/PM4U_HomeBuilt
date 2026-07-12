@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { ModalButton } from "@/components/Modal";
 import { PreviewButton } from "@/components/FilePreview";
 import { Button, Field, Input, Select, Textarea, Tag, Card } from "@/components/ui";
@@ -16,7 +16,7 @@ import {
   updateDailyLog, deleteDailyLog, toggleDailyLogItem,
   uploadDailyLogPhotos, deleteDailyLogPhoto, type UploadPhotosState,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
-  toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask,
+  toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask, updateMilestoneTaskFields,
 } from "./actions";
 import type { PhaseType } from "@prisma/client";
 
@@ -1072,37 +1072,111 @@ export type MilestoneTaskRow = {
   durationDays: number;
   responsible: string | null;
   isDone: boolean;
+  dueDate: string | null;
+  percentComplete: number;
 };
 
-/** WBS cấp 4: danh sách công việc con của 1 milestone, kèm thời lượng + người phụ trách */
-export function WbsTaskPanel({ milestoneId, tasks }: { milestoneId: string; tasks: MilestoneTaskRow[] }) {
+const WBS_EDIT_INPUT = "!py-0.5 text-[11px] border border-line rounded px-1 bg-page outline-none focus:border-brand";
+
+/**
+ * 1 dòng công việc WBS — Hạn/PIC/% sửa trực tiếp tại đây, ghi thẳng DB qua updateMilestoneTaskFields.
+ * Key gắn theo (id + dueDate + responsible + percentComplete) ở nơi gọi để ép remount lấy state mới
+ * mỗi khi dữ liệu đổi (kể cả đổi từ tab Gantt chi tiết) — tránh state cục bộ bị "đứng hình" theo giá trị cũ,
+ * đảm bảo DB luôn là nguồn dữ liệu duy nhất hiển thị ra, khớp giữa Detail Plan và Gantt chi tiết.
+ */
+function WbsTaskEditRow({ t, picListId }: { t: MilestoneTaskRow; picListId: string }) {
+  const [, startTransition] = useTransition();
+  const [due, setDue] = useState(t.dueDate ? t.dueDate.slice(0, 10) : "");
+  const [pic, setPic] = useState(t.responsible ?? "");
+  const [pct, setPct] = useState(t.percentComplete);
+  const isDone = pct >= 100;
+  const isLate = !isDone && !!due && new Date(due).getTime() < Date.now();
+
+  return (
+    <div className="flex items-center gap-2 text-[13px] group flex-wrap">
+      <input
+        type="checkbox"
+        checked={t.isDone}
+        onChange={() => toggleMilestoneTask(t.id)}
+      />
+      <span
+        className={isDone ? "line-through" : ""}
+        style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : undefined }}
+      >
+        {isLate && "⚠️ "}{t.name}
+      </span>
+      <span className="text-[11px] text-muted whitespace-nowrap">~{t.durationDays} ngày</span>
+      <input
+        type="date"
+        className={`${WBS_EDIT_INPUT} !w-[120px]`}
+        value={due}
+        title="Hạn"
+        style={{ color: isLate ? "var(--critical)" : undefined, borderColor: isLate ? "var(--critical)" : undefined }}
+        onChange={(e) => {
+          setDue(e.target.value);
+          startTransition(() => { void updateMilestoneTaskFields(t.id, { dueDate: e.target.value || null }); });
+        }}
+      />
+      <input
+        type="text"
+        list={picListId}
+        className={`${WBS_EDIT_INPUT} !w-32`}
+        value={pic}
+        placeholder="PIC..."
+        title="Người/đơn vị phụ trách"
+        onChange={(e) => setPic(e.target.value)}
+        onBlur={() => {
+          if (pic !== (t.responsible ?? "")) startTransition(() => { void updateMilestoneTaskFields(t.id, { responsible: pic }); });
+        }}
+      />
+      <span className="flex items-center gap-0.5">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          className={`${WBS_EDIT_INPUT} !w-14`}
+          value={pct}
+          title="% hoàn thành"
+          style={{ color: isDone ? "var(--good)" : undefined }}
+          onChange={(e) => setPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+          onBlur={() => {
+            if (pct !== t.percentComplete) startTransition(() => { void updateMilestoneTaskFields(t.id, { percentComplete: pct }); });
+          }}
+        />
+        <span className="text-[11px] text-muted">%</span>
+      </span>
+      <button
+        type="button"
+        onClick={() => deleteMilestoneTask(t.id)}
+        className="text-critical text-xs opacity-0 group-hover:opacity-100 ml-auto"
+      >
+        Xóa
+      </button>
+    </div>
+  );
+}
+
+/** WBS cấp 4: danh sách công việc con của 1 milestone, kèm Hạn/PIC/% sửa trực tiếp (đồng nhất với Gantt chi tiết) */
+export function WbsTaskPanel({ milestoneId, tasks, picOptions = [] }: { milestoneId: string; tasks: MilestoneTaskRow[]; picOptions?: string[] }) {
   const [adding, setAdding] = useState(false);
   const doneCount = tasks.filter((t) => t.isDone).length;
   const totalDays = tasks.reduce((s, t) => s + t.durationDays, 0);
+  const avgPct = tasks.length > 0 ? Math.round(tasks.reduce((s, t) => s + t.percentComplete, 0) / tasks.length) : 0;
+  const picListId = `wbs-pic-${milestoneId}`;
 
   return (
     <div className="ml-6 mt-1.5 border-l-2 border-grid pl-3">
+      <datalist id={picListId}>
+        {picOptions.map((p) => <option key={p} value={p} />)}
+      </datalist>
       {tasks.length > 0 && (
         <p className="text-xs text-muted mb-1">
-          WBS công việc: {doneCount}/{tasks.length} xong · tổng ~{totalDays} ngày công
+          WBS công việc: {doneCount}/{tasks.length} xong · trung bình {avgPct}% · tổng ~{totalDays} ngày công
         </p>
       )}
       <div className="space-y-1">
         {tasks.map((t) => (
-          <div key={t.id} className="flex items-center gap-2 text-[13px] group flex-wrap">
-            <input type="checkbox" checked={t.isDone} onChange={() => toggleMilestoneTask(t.id)} />
-            <span className={t.isDone ? "line-through text-muted" : "text-ink-2"}>{t.name}</span>
-            <span className="text-[11px] text-muted whitespace-nowrap">
-              ~{t.durationDays} ngày{t.responsible && ` · ${t.responsible}`}
-            </span>
-            <button
-              type="button"
-              onClick={() => deleteMilestoneTask(t.id)}
-              className="text-critical text-xs opacity-0 group-hover:opacity-100 ml-auto"
-            >
-              Xóa
-            </button>
-          </div>
+          <WbsTaskEditRow key={`${t.id}-${t.dueDate}-${t.responsible}-${t.percentComplete}`} t={t} picListId={picListId} />
         ))}
       </div>
       {adding ? (
@@ -1161,17 +1235,22 @@ export function MilestoneRow({
   m,
   now,
   templates,
+  picOptions = [],
 }: {
   m: MilestoneRowData;
   now: number;
   templates: { category: string; items: string[] }[];
+  picOptions?: string[];
 }) {
   const [open, setOpen] = useState(false);
   const plannedDate = m.plannedDate ? new Date(m.plannedDate) : null;
   const deadline = m.requestedAt ? new Date(new Date(m.requestedAt).getTime() + m.confirmDeadlineHrs * 3_600_000) : null;
   const hoursLeft = deadline ? Math.max(0, Math.round((deadline.getTime() - now) / 3_600_000)) : null;
-  const isLate = plannedDate && plannedDate.getTime() < now && !["APPROVED", "AUTO_APPROVED"].includes(m.status);
   const doneTasks = m.tasks.filter((t) => t.isDone).length;
+  const avgTaskPct = m.tasks.length > 0 ? Math.round(m.tasks.reduce((s, t) => s + t.percentComplete, 0) / m.tasks.length) : 0;
+  // Đã xong nếu nghiệm thu đạt HOẶC toàn bộ WBS con đã 100% — khớp đúng logic ở Gantt chi tiết
+  const msDone = ["APPROVED", "AUTO_APPROVED"].includes(m.status) || (m.tasks.length > 0 && avgTaskPct >= 100);
+  const isLate = plannedDate && plannedDate.getTime() < now && !msDone;
   const doneChecklist = m.checklistItems.filter((c) => c.isChecked).length;
 
   return (
@@ -1202,7 +1281,8 @@ export function MilestoneRow({
             )}
             {!open && (m.tasks.length > 0 || m.checklistItems.length > 0) && (
               <span className="text-muted">
-                {" "}· WBS {doneTasks}/{m.tasks.length} · Checklist {doneChecklist}/{m.checklistItems.length}
+                {" "}· WBS {doneTasks}/{m.tasks.length}
+                {m.tasks.length > 0 && ` (${avgTaskPct}%)`} · Checklist {doneChecklist}/{m.checklistItems.length}
               </span>
             )}
           </div>
@@ -1221,7 +1301,7 @@ export function MilestoneRow({
       </div>
       {open && (
         <>
-          <WbsTaskPanel milestoneId={m.id} tasks={m.tasks} />
+          <WbsTaskPanel milestoneId={m.id} tasks={m.tasks} picOptions={picOptions} />
           <ChecklistPanel milestoneId={m.id} milestoneName={m.name} items={m.checklistItems} templates={templates} />
         </>
       )}
@@ -1246,10 +1326,12 @@ export function PhaseCard({
   phase,
   now,
   templates,
+  picOptions = [],
 }: {
   phase: PhaseCardData;
   now: number;
   templates: { category: string; items: string[] }[];
+  picOptions?: string[];
 }) {
   const isDone = phase.progressPct >= 100;
   const [open, setOpen] = useState(!isDone);
@@ -1302,7 +1384,7 @@ export function PhaseCard({
       {open && sortedMilestones.length > 0 && (
         <div className="space-y-2">
           {sortedMilestones.map((m) => (
-            <MilestoneRow key={m.id} m={m} now={now} templates={templates} />
+            <MilestoneRow key={m.id} m={m} now={now} templates={templates} picOptions={picOptions} />
           ))}
         </div>
       )}

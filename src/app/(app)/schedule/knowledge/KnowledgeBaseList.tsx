@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui";
+import { PreviewButton } from "@/components/FilePreview";
 import type { KnowledgeArticle } from "@/lib/knowledge-base";
 
 /** Danh sách chủ đề kiến thức — mỗi chủ đề thu gọn mặc định, bấm để xổ ra nội dung chi tiết */
@@ -45,6 +46,20 @@ export function KnowledgeBaseList({ articles }: { articles: KnowledgeArticle[] }
                       <li key={i}>{p}</li>
                     ))}
                   </ul>
+                  {a.images && a.images.length > 0 && (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
+                      {a.images.map((src, i) => (
+                        <PreviewButton key={src} url={src} mimeType="image/jpeg" title={`${a.topic} — ảnh ${i + 1}`}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={src}
+                            alt={`${a.topic} — minh họa ${i + 1}`}
+                            className="w-full aspect-square object-cover rounded-lg border border-line hover:opacity-80"
+                          />
+                        </PreviewButton>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

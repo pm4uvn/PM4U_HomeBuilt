@@ -514,12 +514,14 @@ model MilestoneTask {
   id            String    @id @default(cuid())
   milestoneId   String
   milestone     Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
-  name          String    // "Đào đất hố móng"
-  durationDays  Int       @default(1) // số ngày dự kiến thi công công việc này
-  responsible   String?   // "Nhà thầu thô", "Thầu điện nước", "CĐT"...
-  isDone        Boolean   @default(false)
-  doneAt        DateTime?
-  sortOrder     Int       @default(0)
+  name            String    // "Đào đất hố móng"
+  durationDays    Int       @default(1) // số ngày dự kiến thi công công việc này
+  responsible     String?   // "Nhà thầu thô", "Thầu điện nước", "CĐT"...
+  isDone          Boolean   @default(false)
+  doneAt          DateTime?
+  dueDate         DateTime? // hạn tự đặt tay; nếu trống thì Gantt tự suy ra từ durationDays
+  percentComplete Int       @default(0) // 0-100, theo dõi tiến độ giữa chừng độc lập với isDone
+  sortOrder       Int       @default(0)
 }
 
 enum MilestoneStatus {
