@@ -186,6 +186,33 @@ export const RISK_RESPONSE_STRATEGY: Record<string, string> = {
   ACCEPT: "Chấp nhận",
 };
 
+export const ISSUE_CATEGORY: Record<string, string> = {
+  DESIGN_TECHNICAL: "Thiết kế / kỹ thuật",
+  CONTRACTOR_VENDOR: "Nhà thầu / nhà cung cấp",
+  QUALITY: "Chất lượng thi công",
+  SAFETY: "An toàn lao động",
+  SCHEDULE: "Tiến độ",
+  COST: "Chi phí / ngân sách",
+  MATERIAL_SUPPLY: "Cung ứng vật tư",
+  NEIGHBOR_COMPLAINT: "Khiếu nại hàng xóm",
+  LEGAL_PERMIT: "Pháp lý / giấy phép",
+  OTHER: "Khác",
+};
+
+export const ISSUE_SEVERITY: Record<string, string> = {
+  LOW: "Thấp",
+  MEDIUM: "Trung bình",
+  HIGH: "Cao",
+  CRITICAL: "Nghiêm trọng",
+};
+
+export const ISSUE_STATUS: Record<string, string> = {
+  OPEN: "Đang mở",
+  IN_PROGRESS: "Đang xử lý",
+  RESOLVED: "Đã xử lý",
+  CLOSED: "Đã đóng",
+};
+
 export const IDLE_CAUSE: Record<string, string> = {
   SITE_NOT_CLEARED: "Chưa dọn mặt bằng",
   NEIGHBOR_COMPLAINT: "Hàng xóm khiếu nại",

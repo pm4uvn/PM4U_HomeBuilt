@@ -15,6 +15,7 @@ const NAV = [
   { href: "/cashflow", label: "Dòng tiền", icon: "💰" },
   { href: "/accounts", label: "Tài khoản", icon: "🏦" },
   { href: "/risks", label: "Rủi ro", icon: "⚠️" },
+  { href: "/issues", label: "Vấn đề", icon: "🐞" },
   { href: "/documents", label: "Hồ sơ", icon: "📁" },
 ];
 

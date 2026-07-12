@@ -49,6 +49,7 @@ model Project {
   ownerPurchases OwnerPurchaseItem[]
   dailyLogs      DailyLog[]
   riskLogs       RiskLog[]
+  issueLogs      IssueLog[]
   neighborSurveys NeighborSurvey[]
   pilingRecords  PilingRecord[]
   documents      Document[]
@@ -650,6 +651,7 @@ model RiskLog {
   mitigationActions   RiskMitigationAction[]
   documents           Document[]
   idleWaitLogs        IdleWaitLog[]
+  relatedIssues       IssueLog[]
   createdAt           DateTime @default(now())
   closedAt            DateTime?
 }
@@ -662,6 +664,70 @@ model RiskMitigationAction {
   isDone    Boolean   @default(false)
   doneAt    DateTime?
   sortOrder Int       @default(0)
+}
+
+/**
+ * Issue Log — vấn đề ĐÃ XẢY RA cần xử lý ngay (khác Risk Log là rủi ro TIỀM ẨN, chưa xảy ra).
+ * Vd: nhà thầu giao sai vật tư, phát hiện lỗi thi công, hàng xóm khiếu nại thực tế... — không phải
+ * dự đoán/xác suất như rủi ro, mà là sự việc đã xảy ra, cần theo dõi tới khi xử lý xong (resolvedAt).
+ */
+model IssueLog {
+  id            String        @id @default(cuid())
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id])
+  category      IssueCategory
+  title         String
+  description   String?
+  priority      IssueSeverity @default(MEDIUM)
+  status        IssueStatus   @default(OPEN)
+  raisedBy      String?       // ai phát hiện/báo cáo vấn đề
+  owner         String?       // ai chịu trách nhiệm xử lý
+  raisedDate    DateTime      @default(now())
+  dueDate       DateTime?
+  costImpact    Decimal?      @db.Decimal(18, 0)
+  resolution    String?       // cách đã xử lý
+  resolvedAt    DateTime?
+  relatedRiskId String?
+  relatedRisk   RiskLog?      @relation(fields: [relatedRiskId], references: [id])
+  actions       IssueActionItem[]
+  createdAt     DateTime      @default(now())
+}
+
+model IssueActionItem {
+  id        String    @id @default(cuid())
+  issueId   String
+  issue     IssueLog  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  label     String
+  isDone    Boolean   @default(false)
+  doneAt    DateTime?
+  sortOrder Int       @default(0)
+}
+
+enum IssueCategory {
+  DESIGN_TECHNICAL
+  CONTRACTOR_VENDOR
+  QUALITY
+  SAFETY
+  SCHEDULE
+  COST
+  MATERIAL_SUPPLY
+  NEIGHBOR_COMPLAINT
+  LEGAL_PERMIT
+  OTHER
+}
+
+enum IssueSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
 }
 
 enum RiskCategory {

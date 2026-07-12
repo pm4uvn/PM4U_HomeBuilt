@@ -14,6 +14,9 @@ import { DetailGantt, type DetailGanttPhase } from "./DetailGantt";
 
 export const dynamic = "force-dynamic";
 
+/** Date -> ISO string, hoặc null nếu rỗng/hỏng (ví dụ ngày rác lỡ lọt vào DB) — tránh crash cả trang vì 1 dòng dữ liệu xấu */
+const toIso = (d: Date | null | undefined) => (d && !isNaN(d.getTime()) ? d.toISOString() : null);
+
 export default async function SchedulePage() {
   await requireUser();
   const project = await getDefaultProject();
@@ -70,8 +73,8 @@ export default async function SchedulePage() {
       id: p.id,
       name: p.name,
       sortOrder: p.sortOrder,
-      plannedStart: p.plannedStart?.toISOString() ?? null,
-      plannedEnd: p.plannedEnd?.toISOString() ?? null,
+      plannedStart: toIso(p.plannedStart),
+      plannedEnd: toIso(p.plannedEnd),
       progressPct: Number(p.progressPct),
       holdPoint: holdPoint ? { name: holdPoint.name, status: holdPoint.status } : null,
     };
@@ -81,18 +84,18 @@ export default async function SchedulePage() {
     id: p.id,
     sortOrder: p.sortOrder,
     name: p.name,
-    plannedStart: p.plannedStart?.toISOString() ?? null,
-    plannedEnd: p.plannedEnd?.toISOString() ?? null,
+    plannedStart: toIso(p.plannedStart),
+    plannedEnd: toIso(p.plannedEnd),
     progressPct: Number(p.progressPct),
     milestones: p.milestones.map((m) => ({
       id: m.id,
       name: m.name,
       isHoldPoint: m.isHoldPoint,
       status: m.status,
-      plannedDate: m.plannedDate?.toISOString() ?? null,
+      plannedDate: toIso(m.plannedDate),
       tasks: m.tasks.map((t) => ({
         id: t.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, isDone: t.isDone,
-        dueDate: t.dueDate?.toISOString() ?? null, percentComplete: t.percentComplete,
+        dueDate: toIso(t.dueDate), percentComplete: t.percentComplete,
       })),
     })),
   }));
@@ -132,8 +135,8 @@ export default async function SchedulePage() {
                     sortOrder: phase.sortOrder,
                     name: phase.name,
                     type: phase.type,
-                    plannedStart: phase.plannedStart?.toISOString() ?? null,
-                    plannedEnd: phase.plannedEnd?.toISOString() ?? null,
+                    plannedStart: toIso(phase.plannedStart),
+                    plannedEnd: toIso(phase.plannedEnd),
                     weight: Number(phase.weight),
                     progressPct: Number(phase.progressPct),
                     milestones: phase.milestones.map((m) => ({
@@ -141,8 +144,8 @@ export default async function SchedulePage() {
                       name: m.name,
                       isHoldPoint: m.isHoldPoint,
                       status: m.status,
-                      plannedDate: m.plannedDate?.toISOString() ?? null,
-                      requestedAt: m.requestedAt?.toISOString() ?? null,
+                      plannedDate: toIso(m.plannedDate),
+                      requestedAt: toIso(m.requestedAt),
                       confirmDeadlineHrs: m.confirmDeadlineHrs,
                       lastInspection: m.inspections[0]
                         ? {
@@ -155,7 +158,7 @@ export default async function SchedulePage() {
                       checklistItems: m.checklistItems.map((c) => ({ id: c.id, label: c.label, isChecked: c.isChecked })),
                       tasks: m.tasks.map((t) => ({
                         id: t.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, isDone: t.isDone,
-                        dueDate: t.dueDate?.toISOString() ?? null, percentComplete: t.percentComplete,
+                        dueDate: toIso(t.dueDate), percentComplete: t.percentComplete,
                       })),
                     })),
                   }}

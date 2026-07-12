@@ -961,3 +961,8 @@ export const RISK_TEMPLATES: Partial<Record<PhaseType, RiskTemplateItem[]>> = {
     },
   ],
 };
+
+/** Toàn bộ mẫu rủi ro gộp thành 1 danh sách phẳng (bỏ trùng tên) — dùng cho nơi cần chọn rủi ro không phân theo giai đoạn, VD dropdown liên kết rủi ro ở Issue Log */
+export const ALL_RISK_TEMPLATES: RiskTemplateItem[] = Array.from(
+  new Map(Object.values(RISK_TEMPLATES).flat().map((t) => [t.title, t])).values(),
+);

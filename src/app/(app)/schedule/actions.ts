@@ -383,6 +383,19 @@ export async function deleteMilestoneTask(taskId: string) {
   revalidate();
 }
 
+/**
+ * Ngày hợp lệ trong khoảng dự án thực tế (1970-2200) — chặn giá trị rác kiểu năm "82926" lọt vào DB.
+ * Input type="date" của trình duyệt cho phép gõ tới 6 chữ số năm khi người dùng gõ tay chưa xong,
+ * nên mỗi keystroke có thể tạm sinh ra 1 ngày hợp lệ về mặt cú pháp nhưng vô lý về mặt dữ liệu.
+ */
+function safeDate(iso: string): Date | undefined {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return undefined;
+  const year = d.getUTCFullYear();
+  if (year < 1970 || year > 2200) return undefined;
+  return d;
+}
+
 /** Sửa nhanh Hạn/PIC/% của 1 việc WBS ngay trên Gantt chi tiết — click-to-edit, tự lưu */
 export async function updateMilestoneTaskFields(
   taskId: string,
@@ -390,7 +403,14 @@ export async function updateMilestoneTaskFields(
 ) {
   await requireUser();
   const patch: { dueDate?: Date | null; responsible?: string | null; percentComplete?: number; isDone?: boolean; doneAt?: Date | null } = {};
-  if (data.dueDate !== undefined) patch.dueDate = data.dueDate ? new Date(data.dueDate) : null;
+  if (data.dueDate !== undefined) {
+    if (!data.dueDate) {
+      patch.dueDate = null;
+    } else {
+      const d = safeDate(data.dueDate);
+      if (d) patch.dueDate = d; // ngày rác (ngoài 1970-2200) thì bỏ qua, không ghi đè
+    }
+  }
   if (data.responsible !== undefined) patch.responsible = data.responsible || null;
   if (data.percentComplete !== undefined) {
     const pct = Math.max(0, Math.min(100, Math.round(data.percentComplete)));

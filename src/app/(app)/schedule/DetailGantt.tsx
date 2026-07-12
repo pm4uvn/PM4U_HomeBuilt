@@ -68,6 +68,15 @@ const DONE_STATUSES = ["APPROVED", "AUTO_APPROVED"];
 /** "dd/MM/yyyy" -> "dd/MM" — đủ nhìn ở cột hẹp, năm đã có sẵn trên trục tháng */
 const fmtShort = (d: string | Date | null | undefined) => (d ? fmtDate(d).slice(0, 5) : "—");
 
+/**
+ * input type="date" cho gõ tay tới 6 chữ số năm khi chưa gõ xong (VD lỡ tay ra "82926-09-16") —
+ * chỉ coi là hạn hợp lệ để lưu DB khi năm nằm trong khoảng dự án thực tế.
+ */
+function isSaneDate(iso: string): boolean {
+  const y = new Date(iso).getFullYear();
+  return !isNaN(y) && y >= 1970 && y <= 2200;
+}
+
 /** Gộp PIC từ danh sách công việc WBS của 1 mốc — bỏ trùng tên, giới hạn hiển thị gọn */
 function summarizePic(tasks: DetailGanttTask[]): string {
   const names = [...new Set(tasks.map((t) => t.responsible).filter(Boolean))] as string[];
@@ -137,7 +146,7 @@ function getWindow(key: RangeKey, now: Date): { start: Date; end: Date } | null 
 }
 
 /** Cột: nhãn | thanh Gantt | hạn | PIC | % — dùng chung cho mọi hàng để track thanh luôn thẳng nhau */
-const GRID_COLS = "grid-cols-[210px_1fr_104px_92px_50px] max-sm:grid-cols-[130px_1fr]";
+const GRID_COLS = "grid-cols-[300px_1fr_104px_92px_50px] max-sm:grid-cols-[160px_1fr]";
 const EXTRA_COLS = "max-sm:hidden text-[11px] text-muted truncate";
 const EDIT_INPUT = "w-full bg-transparent text-[11px] text-ink-2 border border-transparent rounded px-0.5 hover:border-line focus:border-brand outline-none truncate";
 
@@ -175,9 +184,9 @@ function TaskRow({
   const isLate = !isDone && effectiveDue.getTime() < now;
 
   return (
-    <div className={`grid ${GRID_COLS} gap-2.5 items-center py-[2px]`}>
+    <div className={`grid ${GRID_COLS} gap-2.5 items-start py-[2px]`}>
       <div
-        className="flex items-center gap-1 text-[11px] truncate pl-8"
+        className="flex items-start gap-1 text-[11px] pl-8 leading-snug"
         style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : "var(--text-muted)" }}
         title={isLate ? `${t.name} · quá hạn` : isDone ? `${t.name} · ✓ xong` : t.name}
       >
@@ -213,6 +222,7 @@ function TaskRow({
         style={{ color: isLate ? "var(--critical)" : undefined, borderColor: isLate ? "var(--critical)" : undefined }}
         onChange={(e) => {
           setDue(e.target.value);
+          if (e.target.value && !isSaneDate(e.target.value)) return; // đang gõ dở/ngày rác — chưa lưu
           startTransition(() => {
             void updateMilestoneTaskFields(t.id, { dueDate: e.target.value || null });
           });
@@ -351,26 +361,38 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
             return (
               <div key={phase.id} className="mb-1">
                 {/* Hàng giai đoạn — khoảng bao [plannedStart, plannedEnd] làm nền tham chiếu */}
-                <div className={`grid ${GRID_COLS} gap-2.5 items-center py-1`}>
-                  <div className="text-[13px] font-bold truncate">
+                <div className={`grid ${GRID_COLS} gap-2.5 items-start py-1`}>
+                  <div className="text-[13px] font-bold leading-snug">
                     {phase.sortOrder}. {phase.name}
-                    <span className="text-muted font-normal text-xs"> · {phase.progressPct}%</span>
+                    <span className="font-normal text-xs" style={{ color: phase.progressPct >= 100 ? "var(--good)" : "var(--text-muted)" }}> · {phase.progressPct}%</span>
                   </div>
                   <div className="relative h-2 rounded bg-grid">
                     {phase.plannedStart && phase.plannedEnd && (() => {
                       const { left, width } = clampBar(pos(phase.plannedStart), Math.max(0.5, pos(phase.plannedEnd) - pos(phase.plannedStart)));
                       return (
-                        <div
-                          className="absolute inset-y-0 rounded opacity-50"
-                          style={{ left: `${left}%`, width: `${width}%`, background: "var(--seq-150)" }}
-                        />
+                        <>
+                          <div
+                            className="absolute inset-y-0 rounded opacity-50"
+                            style={{ left: `${left}%`, width: `${width}%`, background: "var(--seq-150)" }}
+                          />
+                          {phase.progressPct > 0 && (
+                            <div
+                              className="absolute inset-y-0 rounded"
+                              style={{
+                                left: `${left}%`,
+                                width: `${(width * phase.progressPct) / 100}%`,
+                                background: phase.progressPct >= 100 ? "var(--good)" : "var(--series-1)",
+                              }}
+                            />
+                          )}
+                        </>
                       );
                     })()}
                     <TodayLine pos={todayPos} />
                   </div>
                   <span className={EXTRA_COLS}>{fmtShort(phase.plannedEnd)}</span>
                   <span className={EXTRA_COLS}></span>
-                  <span className={EXTRA_COLS}>{phase.progressPct}%</span>
+                  <span className={EXTRA_COLS} style={{ color: phase.progressPct >= 100 ? "var(--good)" : undefined }}>{phase.progressPct}%</span>
                 </div>
 
                 {/* Từng mốc — thanh chạy từ mốc trước tới mốc này (chuỗi finish-to-start) */}
@@ -399,8 +421,8 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
 
                   return (
                     <div key={m.id}>
-                      <div className={`grid ${GRID_COLS} gap-2.5 items-center py-[3px]`}>
-                        <div className="flex items-center gap-1 text-[12px] text-ink-2 truncate pl-2" title={m.name}>
+                      <div className={`grid ${GRID_COLS} gap-2.5 items-start py-[3px]`}>
+                        <div className="flex items-start gap-1 text-[12px] text-ink-2 pl-2 leading-snug" title={m.name}>
                           {hasTasks ? (
                             <button
                               type="button"
@@ -415,7 +437,7 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                           )}
                           {m.isHoldPoint && "⛔ "}
                           {isLate && "⚠️ "}
-                          <span className="truncate" style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : undefined }}>{m.name}</span>
+                          <span style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : undefined }}>{m.name}</span>
                           {hasTasks && (
                             <span className="text-muted shrink-0 text-[10px]">({doneCount}/{m.tasks.length})</span>
                           )}

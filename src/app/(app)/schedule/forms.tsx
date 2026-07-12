@@ -1078,6 +1078,12 @@ export type MilestoneTaskRow = {
 
 const WBS_EDIT_INPUT = "!py-0.5 text-[11px] border border-line rounded px-1 bg-page outline-none focus:border-brand";
 
+/** input type="date" cho gõ tay tới 6 chữ số năm khi chưa gõ xong — chỉ lưu DB khi năm hợp lý */
+const isSaneDate = (iso: string) => {
+  const y = new Date(iso).getFullYear();
+  return !isNaN(y) && y >= 1970 && y <= 2200;
+};
+
 /**
  * 1 dòng công việc WBS — Hạn/PIC/% sửa trực tiếp tại đây, ghi thẳng DB qua updateMilestoneTaskFields.
  * Key gắn theo (id + dueDate + responsible + percentComplete) ở nơi gọi để ép remount lấy state mới
@@ -1114,6 +1120,7 @@ function WbsTaskEditRow({ t, picListId }: { t: MilestoneTaskRow; picListId: stri
         style={{ color: isLate ? "var(--critical)" : undefined, borderColor: isLate ? "var(--critical)" : undefined }}
         onChange={(e) => {
           setDue(e.target.value);
+          if (e.target.value && !isSaneDate(e.target.value)) return; // đang gõ dở/ngày rác — chưa lưu
           startTransition(() => { void updateMilestoneTaskFields(t.id, { dueDate: e.target.value || null }); });
         }}
       />
