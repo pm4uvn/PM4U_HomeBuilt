@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { computeStageGrossAmount } from "@/lib/payment-calc";
+import { logAudit } from "@/lib/audit";
 import type {
   VendorType, ContractStatus, PenaltyType, PenaltyBasis,
   DiscountType, VariationReason, PaymentStageStatus,
@@ -94,8 +95,8 @@ export async function deleteVendor(vendorId: string) {
 }
 
 export async function createContract(projectId: string, fd: FormData) {
-  await requireUser();
-  await prisma.contract.create({
+  const user = await requireUser();
+  const contract = await prisma.contract.create({
     data: {
       projectId,
       vendorId: str(fd, "vendorId"),
@@ -109,6 +110,14 @@ export async function createContract(projectId: string, fd: FormData) {
       plannedEndDate: dateOrNull(fd, "plannedEndDate"),
       status: (str(fd, "status") || "SIGNED") as ContractStatus,
     },
+  });
+  await logAudit({
+    projectId,
+    actorEmail: user.email,
+    action: "CONTRACT_CREATED",
+    entityType: "Contract",
+    entityId: contract.id,
+    summary: `Tạo hợp đồng ${contract.code} — ${contract.title}`,
   });
   revalidatePath("/contracts");
 }
@@ -136,13 +145,14 @@ export async function updateContract(contractId: string, fd: FormData) {
 }
 
 export async function deleteContract(contractId: string) {
-  await requireUser();
+  const user = await requireUser();
   const paidCount = await prisma.paymentStage.count({ where: { contractId, status: "PAID" } });
   if (paidCount > 0) {
     throw new Error(
       `Không thể xóa — hợp đồng đã có ${paidCount} đợt thanh toán đã trả. Việc xóa sẽ làm mất lịch sử tài chính.`,
     );
   }
+  const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
   await prisma.$transaction([
     prisma.document.updateMany({ where: { contractId }, data: { contractId: null } }),
     prisma.paymentStage.deleteMany({ where: { contractId } }),
@@ -153,6 +163,14 @@ export async function deleteContract(contractId: string) {
     prisma.idleWaitLog.deleteMany({ where: { contractId } }),
     prisma.contract.delete({ where: { id: contractId } }),
   ]);
+  await logAudit({
+    projectId: contract.projectId,
+    actorEmail: user.email,
+    action: "CONTRACT_DELETED",
+    entityType: "Contract",
+    entityId: contractId,
+    summary: `Xóa hợp đồng ${contract.code} — ${contract.title}`,
+  });
   revalidatePath("/contracts");
   revalidatePath("/");
 }
@@ -284,18 +302,30 @@ async function recomputeStageAggregate(stageId: string) {
 
 /** Ghi nhận 1 lần chuyển tiền cho 1 đợt — hỗ trợ trả nhiều lần cho cùng 1 đợt */
 export async function addPaymentTransaction(stageId: string, fd: FormData) {
-  await requireUser();
+  const user = await requireUser();
+  const amount = numOrNull(fd, "amount") ?? 0;
   await prisma.paymentTransaction.create({
     data: {
       paymentStageId: stageId,
-      amount: numOrNull(fd, "amount") ?? 0,
+      amount,
       paidDate: dateOrNull(fd, "paidDate") ?? new Date(),
       paidFromAccountId: str(fd, "paidFromAccountId") || null,
       note: str(fd, "note") || null,
     },
   });
   await recomputeStageAggregate(stageId);
-  const stage = await prisma.paymentStage.findUniqueOrThrow({ where: { id: stageId } });
+  const stage = await prisma.paymentStage.findUniqueOrThrow({
+    where: { id: stageId },
+    include: { contract: { include: { vendor: true } } },
+  });
+  await logAudit({
+    projectId: stage.contract.projectId,
+    actorEmail: user.email,
+    action: "PAYMENT_RECORDED",
+    entityType: "PaymentStage",
+    entityId: stageId,
+    summary: `Ghi nhận trả ${amount.toLocaleString("vi-VN")}₫ cho đợt ${stage.stageNo} — ${stage.contract.vendor.name}`,
+  });
   revalidatePath(`/contracts/${stage.contractId}`);
   revalidatePath("/cashflow");
   revalidatePath("/accounts");
@@ -411,13 +441,22 @@ export async function createVariation(contractId: string, fd: FormData) {
 }
 
 export async function decideVariation(variationId: string, approve: boolean) {
-  await requireUser();
+  const user = await requireUser();
   const v = await prisma.variation.update({
     where: { id: variationId },
     data: {
       status: approve ? "APPROVED" : "REJECTED",
       approvedAt: approve ? new Date() : null,
     },
+    include: { contract: { select: { projectId: true, vendor: { select: { name: true } } } } },
+  });
+  await logAudit({
+    projectId: v.contract.projectId,
+    actorEmail: user.email,
+    action: approve ? "VARIATION_APPROVED" : "VARIATION_REJECTED",
+    entityType: "Variation",
+    entityId: v.id,
+    summary: `${approve ? "Duyệt" : "Từ chối"} phát sinh ${v.code} — ${v.title} (${v.contract.vendor.name})`,
   });
   revalidatePath(`/contracts/${v.contractId}`);
   revalidatePath("/");

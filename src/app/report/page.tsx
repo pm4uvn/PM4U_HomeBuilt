@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 const HEALTH_COLOR: Record<string, string> = { good: "#0ca30c", warning: "#b8860b", critical: "#d03b3b" };
 const RISK_COLOR: Record<string, string> = { CRITICAL: "#d03b3b", HIGH: "#d03b3b", MEDIUM: "#b8860b", LOW: "#555" };
+const evmColor = (ratio: number) => (ratio >= 1 ? "#0ca30c" : ratio >= 0.9 ? "#b8860b" : "#d03b3b");
 
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
@@ -61,6 +62,14 @@ export default async function ReportPage() {
             <span>Tiến độ: <b style={{ color: "#111" }}>{data.healthScore.schedule}</b></span>
             <span>Ngân sách: <b style={{ color: "#111" }}>{data.healthScore.budget}</b></span>
             <span>Rủi ro: <b style={{ color: "#111" }}>{data.healthScore.risk}</b></span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 24, marginTop: 10, paddingTop: 10, borderTop: "1px solid #eee" }}>
+            <span style={{ fontSize: 12, color: "#555" }}>
+              CPI (chi phí): <b style={{ color: evmColor(data.evm.cpi) }}>{data.evm.cpi.toFixed(2)}</b>
+            </span>
+            <span style={{ fontSize: 12, color: "#555" }}>
+              SPI (tiến độ): <b style={{ color: evmColor(data.evm.spi) }}>{data.evm.spi.toFixed(2)}</b>
+            </span>
           </div>
         </div>
 

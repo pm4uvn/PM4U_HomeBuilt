@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { requestInspection, recordInspection } from "@/services/milestone.service";
+import { logAudit } from "@/lib/audit";
 import {
   STANDARD_MILESTONES, buildStructureMilestones, spreadDates,
   PRE_CONSTRUCTION_GATE_NAME, PILING_GATE_NAME,
@@ -429,12 +430,22 @@ export async function requestInspectionAction(milestoneId: string) {
 }
 
 export async function recordInspectionAction(milestoneId: string, fd: FormData) {
-  await requireUser();
-  await recordInspection({
+  const user = await requireUser();
+  const result = str(fd, "result") as InspectionResult;
+  const milestone = await recordInspection({
     milestoneId,
     method: str(fd, "method") as InspectionMethod,
-    result: str(fd, "result") as InspectionResult,
+    result,
     notes: str(fd, "notes") || undefined,
+  });
+  const phase = await prisma.phase.findUniqueOrThrow({ where: { id: milestone.phaseId }, select: { projectId: true } });
+  await logAudit({
+    projectId: phase.projectId,
+    actorEmail: user.email,
+    action: "INSPECTION_RECORDED",
+    entityType: "Milestone",
+    entityId: milestoneId,
+    summary: `Nghiệm thu "${milestone.name}" — kết quả ${result}`,
   });
   revalidate();
   revalidatePath("/contracts");
@@ -550,6 +561,23 @@ export async function updateDailyLog(id: string, fd: FormData) {
 export async function toggleDailyLogItem(id: string, isChecked: boolean) {
   await requireUser();
   await prisma.dailyLogItem.update({ where: { id }, data: { isChecked } });
+  revalidate();
+}
+
+/** Sửa nhanh Hạn/PIC của 1 việc nhật ký ngay trên tab ☑️ Việc cần làm — click-to-edit, tự lưu */
+export async function updateDailyLogItemFields(id: string, data: { dueDate?: string | null; pic?: string | null }) {
+  await requireUser();
+  const patch: { dueDate?: Date | null; pic?: string | null } = {};
+  if (data.dueDate !== undefined) {
+    if (!data.dueDate) {
+      patch.dueDate = null;
+    } else {
+      const d = safeDate(data.dueDate);
+      if (d) patch.dueDate = d; // ngày rác (ngoài 1970-2200) thì bỏ qua, không ghi đè
+    }
+  }
+  if (data.pic !== undefined) patch.pic = data.pic || null;
+  await prisma.dailyLogItem.update({ where: { id }, data: patch });
   revalidate();
 }
 

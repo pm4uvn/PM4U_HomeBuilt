@@ -42,6 +42,7 @@ model Project {
   grossFloorArea Decimal? @db.Decimal(10, 2) // m2 sàn xây dựng
   budgetPlanned  Decimal  @db.Decimal(18, 0) // tổng ngân sách dự kiến
   status         ProjectStatus @default(PREPARING)
+  emailNotificationsEnabled Boolean @default(true) // gửi email nhắc cảnh báo (Alert) qua cron — bật mặc định
 
   vendors        Vendor[]
   contracts      Contract[]
@@ -54,6 +55,7 @@ model Project {
   pilingRecords  PilingRecord[]
   documents      Document[]
   alerts         Alert[]
+  auditLogs      AuditLog[]
   bankAccounts   BankAccount[]
   checklistTemplates ChecklistTemplate[]
   charter        ProjectCharter?
@@ -902,9 +904,31 @@ model Alert {
   refTable  String?   // "PaymentStage" | "Milestone" | "IdleWaitLog"...
   refId     String?
   status    AlertStatus @default(ACTIVE)
+  notifiedAt DateTime? // đã gửi email nhắc qua cron chưa — null = chưa gửi, tránh gửi lặp mỗi lần computeAlerts() chạy lại
   createdAt DateTime @default(now())
 
   @@index([projectId, status])
+}
+
+/**
+ * Audit trail — ai đã sửa gì, lúc nào. Chỉ gắn vào các thao tác quan trọng (tiền, nghiệm thu,
+ * duyệt phát sinh, đổi trạng thái rủi ro/vấn đề) chứ không log mọi click, tránh nhiễu.
+ * actorEmail lưu trực tiếp (không FK sang User) vì requireUser() chỉ trả Supabase user, không phải
+ * lúc nào cũng có bản ghi Prisma User tương ứng — đơn giản và không bao giờ NULL do lỗi join.
+ */
+model AuditLog {
+  id         String   @id @default(cuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id])
+  actorEmail String
+  action     String   // "PAYMENT_RECORDED" | "VARIATION_APPROVED" | "INSPECTION_RECORDED" | "RISK_STATUS_CHANGED" | "ISSUE_STATUS_CHANGED" | "CONTRACT_CREATED" | "CONTRACT_DELETED"...
+  entityType String   // "Contract" | "PaymentStage" | "Variation" | "Milestone" | "RiskLog" | "IssueLog"
+  entityId   String
+  summary    String   // câu mô tả ngắn hiển thị trực tiếp, không cần dựng lại từ changes
+  changes    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }
 
 enum AlertType {
@@ -917,6 +941,7 @@ enum AlertType {
   UNDERGROUND_OBSTACLE   // phát hiện chướng ngại vật ngầm -> cảnh báo phát sinh
   CONTRACT_DEADLINE_NEAR
   BUDGET_OVERRUN         // chi thực tế vượt ngân sách hạng mục
+  PRECONSTRUCTION_RISK   // rủi ro từ 7 rule kiểm soát khởi công & nền móng chưa xử lý
 }
 
 enum AlertStatus {

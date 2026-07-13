@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getDashboardData, getDefaultProject } from "@/services/dashboard.service";
 import {
-  HealthScoreCard, ProgressGauge, BudgetCard, ActionQueue, GanttChart,
+  HealthScoreCard, ProgressGauge, BudgetCard, EvmCard, ActionQueue, GanttChart,
   CashflowTable, RiskPanel, DailyStrip,
 } from "@/components/dashboard";
 import { Card, Button } from "@/components/ui";
@@ -52,10 +52,11 @@ export default async function DashboardPage() {
         </Link>
       </header>
 
-      <div className="grid grid-cols-3 gap-3 max-lg:grid-cols-1">
+      <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2 max-sm:grid-cols-1">
         <HealthScoreCard health={data.healthScore} />
         <ProgressGauge progress={data.progress} />
         <BudgetCard budget={data.budget} />
+        <EvmCard evm={data.evm} />
       </div>
 
       <ActionQueue actions={data.actions} />

@@ -136,6 +136,39 @@ export function BudgetCard({ budget }: { budget: DashboardData["budget"] }) {
   );
 }
 
+/* ---------- EVM: CPI/SPI chuẩn PMI ---------- */
+function evmTone(ratio: number): { color: string; label: string } {
+  if (ratio >= 1) return { color: "var(--good)", label: "Tốt" };
+  if (ratio >= 0.9) return { color: "var(--warning)", label: "Cần chú ý" };
+  return { color: "var(--critical)", label: "Đáng lo" };
+}
+
+export function EvmCard({ evm }: { evm: DashboardData["evm"] }) {
+  const cpi = evmTone(evm.cpi);
+  const spi = evmTone(evm.spi);
+  return (
+    <Card title="Hiệu suất dự án (EVM)">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-[11px] text-muted uppercase tracking-wide">CPI — Chi phí</div>
+          <div className="text-2xl font-bold" style={{ color: cpi.color }}>{evm.cpi.toFixed(2)}</div>
+          <div className="text-[12px] font-semibold" style={{ color: cpi.color }}>{cpi.label}</div>
+        </div>
+        <div>
+          <div className="text-[11px] text-muted uppercase tracking-wide">SPI — Tiến độ</div>
+          <div className="text-2xl font-bold" style={{ color: spi.color }}>{evm.spi.toFixed(2)}</div>
+          <div className="text-[12px] font-semibold" style={{ color: spi.color }}>{spi.label}</div>
+        </div>
+      </div>
+      <div className="text-[11.5px] text-muted mt-3 pt-2.5 border-t border-grid flex gap-3 flex-wrap money">
+        <span>PV {fmtTr(evm.pv)}</span>
+        <span>EV {fmtTr(evm.ev)}</span>
+        <span>AC {fmtTr(evm.ac)}</span>
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- Hàng đợi cần hành động ---------- */
 export function ActionQueue({ actions }: { actions: DashboardData["actions"] }) {
   return (

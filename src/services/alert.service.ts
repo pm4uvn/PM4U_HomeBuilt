@@ -5,7 +5,10 @@
 import { prisma } from "@/lib/prisma";
 import { daysBetween } from "@/lib/format";
 import { computeStageGrossAmount } from "@/lib/payment-calc";
+import { computePreConstructionRiskAlerts } from "./preconstruction.service";
 import type { AlertType, RiskSeverity } from "@prisma/client";
+
+const CONTRACT_DEADLINE_WARN_DAYS = 14;
 
 const HOUR = 3_600_000;
 
@@ -23,7 +26,7 @@ export async function computeAlerts(projectId: string) {
   const alerts: NewAlert[] = [];
   const now = new Date();
 
-  const [stages, milestones, idleLogs, pilingRecords, project, purchases] =
+  const [stages, milestones, idleLogs, pilingRecords, project, purchases, undergroundRisks, nearDeadlineContracts, preconAlerts] =
     await Promise.all([
       prisma.paymentStage.findMany({
         where: { contract: { projectId }, status: { in: ["DUE", "OVERDUE", "PARTIAL"] } },
@@ -42,6 +45,14 @@ export async function computeAlerts(projectId: string) {
         where: { contract: { projectId }, status: { in: ["PAID", "PARTIAL"] } },
         _sum: { paidAmount: true },
       }),
+      prisma.riskLog.findMany({
+        where: { projectId, category: "UNDERGROUND_OBSTACLE", status: { in: ["OPEN", "MONITORING"] } },
+      }),
+      prisma.contract.findMany({
+        where: { projectId, status: { in: ["SIGNED", "IN_PROGRESS"] }, plannedEndDate: { not: null }, actualEndDate: null },
+        include: { vendor: true },
+      }),
+      computePreConstructionRiskAlerts(projectId),
     ]);
 
   // 1. Thanh toán tới hạn / quá hạn / đã trả một phần
@@ -151,6 +162,50 @@ export async function computeAlerts(projectId: string) {
       severity: "HIGH",
       title: "Chi tiêu vượt ngân sách dự kiến",
       message: `Đã chi ${totalSpent.toLocaleString("vi-VN")}₫ / ngân sách ${Number(project.budgetPlanned).toLocaleString("vi-VN")}₫`,
+    });
+  }
+
+  // 6. Chướng ngại vật ngầm — rủi ro đã ghi nhận ở Sổ rủi ro, đưa vào Action Queue để không bị bỏ sót
+  for (const r of undergroundRisks) {
+    alerts.push({
+      type: "UNDERGROUND_OBSTACLE",
+      severity: r.severity,
+      title: `Chướng ngại ngầm: ${r.title}`,
+      message: r.description ?? "Cần khảo sát/xử lý trước khi tiếp tục đào/ép cọc khu vực liên quan.",
+      refTable: "RiskLog",
+      refId: r.id,
+    });
+  }
+
+  // 7. Hợp đồng sắp/đã quá hạn hoàn thành theo plannedEndDate mà chưa nghiệm thu xong (actualEndDate)
+  for (const c of nearDeadlineContracts) {
+    const diffDays = Math.floor((c.plannedEndDate!.getTime() - now.getTime()) / 86_400_000);
+    if (diffDays > CONTRACT_DEADLINE_WARN_DAYS) continue;
+    const overdue = diffDays < 0;
+    alerts.push({
+      type: "CONTRACT_DEADLINE_NEAR",
+      severity: overdue ? "CRITICAL" : diffDays <= 3 ? "HIGH" : "MEDIUM",
+      title: overdue
+        ? `QUÁ HẠN hoàn thành HĐ ${c.code} — ${c.vendor.name}`
+        : `Sắp tới hạn hoàn thành HĐ ${c.code} — ${c.vendor.name}`,
+      message: overdue
+        ? `Đã quá hạn hoàn thành theo hợp đồng ${Math.abs(diffDays)} ngày (hạn ${c.plannedEndDate!.toLocaleDateString("vi-VN")}) mà chưa xác nhận hoàn thành.`
+        : `Còn ${diffDays} ngày tới hạn hoàn thành theo hợp đồng (${c.plannedEndDate!.toLocaleDateString("vi-VN")}).`,
+      dueAt: c.plannedEndDate!,
+      refTable: "Contract",
+      refId: c.id,
+    });
+  }
+
+  // 8. Rủi ro tiền khởi công & nền móng chưa xử lý (7 rule compute-on-read) — nối vào Action Queue thay vì chỉ hiện ở trang Rủi ro
+  for (const a of preconAlerts) {
+    alerts.push({
+      type: "PRECONSTRUCTION_RISK",
+      severity: a.severity,
+      title: a.title,
+      message: a.description,
+      refTable: "PreConstructionRule",
+      refId: a.ruleId,
     });
   }
 

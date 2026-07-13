@@ -7,6 +7,7 @@ import { fmtVND } from "@/lib/format";
 import { STAKEHOLDER_LEVEL } from "@/lib/labels";
 import {
   upsertCharter, createStakeholder, updateStakeholder, deleteStakeholder, importVendorsAsStakeholders,
+  toggleEmailNotifications,
 } from "./actions";
 
 const opts = (m: Record<string, string>) =>
@@ -475,6 +476,32 @@ export function DeleteStakeholderButton({ id, name }: { id: string; name: string
       className="text-critical text-xs font-semibold"
     >
       Xóa
+    </button>
+  );
+}
+
+/** Bật/tắt email nhắc cảnh báo — gửi qua cron /api/cron/notify mỗi 6h nếu bật */
+export function NotificationToggle({ projectId, enabled }: { projectId: string; enabled: boolean }) {
+  const [on, setOn] = useState(enabled);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setOn(!on);
+        toggleEmailNotifications(projectId, !on);
+      }}
+      className="flex items-center gap-2.5"
+    >
+      <span
+        className="relative inline-block w-10 h-5.5 rounded-full transition-colors shrink-0"
+        style={{ background: on ? "var(--series-1)" : "var(--grid)" }}
+      >
+        <span
+          className="absolute top-0.5 left-0.5 w-4.5 h-4.5 rounded-full bg-white transition-transform"
+          style={{ transform: on ? "translateX(18px)" : "translateX(0)" }}
+        />
+      </span>
+      <span className="text-[13.5px] font-semibold">{on ? "Đã bật" : "Đã tắt"}</span>
     </button>
   );
 }

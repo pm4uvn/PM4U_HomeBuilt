@@ -209,3 +209,10 @@ export async function deleteStakeholder(id: string) {
   await prisma.stakeholder.delete({ where: { id } });
   revalidate();
 }
+
+/** Bật/tắt email nhắc cảnh báo (Alert) gửi qua cron /api/cron/notify */
+export async function toggleEmailNotifications(projectId: string, enabled: boolean) {
+  await requireUser();
+  await prisma.project.update({ where: { id: projectId }, data: { emailNotificationsEnabled: enabled } });
+  revalidatePath("/charter/settings");
+}

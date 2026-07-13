@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/charter", label: "📜 Điều lệ dự án" },
   { href: "/charter/stakeholders", label: "👥 Bên liên quan" },
+  { href: "/charter/settings", label: "⚙️ Cài đặt" },
 ];
 
 /** Tab điều hướng giữa Project Charter và Stakeholder Register — 2 trang cùng module Khởi tạo */

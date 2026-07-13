@@ -6,6 +6,7 @@ next-env.d.ts
 !.env.example
 dist/
 *.log
+*.tsbuildinfo
 
 # Dữ liệu cá nhân thật (địa chỉ, tên, SĐT chủ nhà) — không đưa lên Git
 HomeBuild_PM_database_vat_tu_hoan_thien_import.xlsx

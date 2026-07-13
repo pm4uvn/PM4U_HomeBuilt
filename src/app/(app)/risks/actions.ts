@@ -5,6 +5,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
+import { RISK_STATUS } from "@/lib/labels";
 import type { RiskCategory, RiskSeverity, RiskStatus, RiskProbability, RiskResponseStrategy, IdleCause } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -96,10 +98,18 @@ export async function toggleRiskMitigationAction(id: string, isDone: boolean) {
 }
 
 export async function updateRiskStatus(riskId: string, status: RiskStatus) {
-  await requireUser();
-  await prisma.riskLog.update({
+  const user = await requireUser();
+  const risk = await prisma.riskLog.update({
     where: { id: riskId },
     data: { status, closedAt: status === "CLOSED" ? new Date() : null },
+  });
+  await logAudit({
+    projectId: risk.projectId,
+    actorEmail: user.email,
+    action: "RISK_STATUS_CHANGED",
+    entityType: "RiskLog",
+    entityId: riskId,
+    summary: `Đổi trạng thái rủi ro "${risk.title}" → ${RISK_STATUS[status] ?? status}`,
   });
   revalidate();
 }

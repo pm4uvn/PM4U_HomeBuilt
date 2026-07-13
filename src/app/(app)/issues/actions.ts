@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { ALL_RISK_TEMPLATES } from "@/lib/risk-templates";
+import { logAudit } from "@/lib/audit";
+import { ISSUE_STATUS } from "@/lib/labels";
 import type { IssueCategory, IssueSeverity, IssueStatus } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -102,10 +104,18 @@ export async function deleteIssue(issueId: string) {
 }
 
 export async function updateIssueStatus(issueId: string, status: IssueStatus) {
-  await requireUser();
-  await prisma.issueLog.update({
+  const user = await requireUser();
+  const issue = await prisma.issueLog.update({
     where: { id: issueId },
     data: { status, resolvedAt: status === "RESOLVED" || status === "CLOSED" ? new Date() : null },
+  });
+  await logAudit({
+    projectId: issue.projectId,
+    actorEmail: user.email,
+    action: "ISSUE_STATUS_CHANGED",
+    entityType: "IssueLog",
+    entityId: issueId,
+    summary: `Đổi trạng thái vấn đề "${issue.title}" → ${ISSUE_STATUS[status] ?? status}`,
   });
   revalidate();
 }

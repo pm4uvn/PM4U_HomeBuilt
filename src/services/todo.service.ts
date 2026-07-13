@@ -58,14 +58,15 @@ export async function getTodoItems(projectId: string): Promise<TodoItem[]> {
   }
 
   for (const t of milestoneTasks) {
+    const dueDate = t.dueDate?.toISOString() ?? null;
     items.push({
       id: t.id,
       source: "MILESTONE_TASK",
       label: t.name,
       context: `${t.milestone.phase.name} · ${t.milestone.name}`,
       pic: t.responsible,
-      dueDate: null,
-      isOverdue: false,
+      dueDate,
+      isOverdue: !!dueDate && dueDate.slice(0, 10) < now,
       href: "/schedule",
     });
   }

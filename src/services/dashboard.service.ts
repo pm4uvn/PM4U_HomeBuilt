@@ -47,10 +47,23 @@ export interface HealthScore {
   risk: number;
 }
 
+/**
+ * Earned Value Management chuẩn PMI — 3 đường cong: PV (kế hoạch), EV (đã đạt), AC (đã chi).
+ * CPI = EV/AC (>1 nghĩa là đang dưới ngân sách), SPI = EV/PV (>1 nghĩa là đúng/nhanh hơn kế hoạch).
+ */
+export interface EvmMetrics {
+  pv: number;
+  ev: number;
+  ac: number;
+  cpi: number;
+  spi: number;
+}
+
 export interface DashboardData {
   project: { id: string; name: string; status: string };
   progress: { pct: number; lateDays: number; forceMajeureDays: number };
   budget: BudgetSummary;
+  evm: EvmMetrics;
   actions: ActionItem[];
   phases: GanttPhase[];
   cashflow: CashflowItem[];
@@ -63,25 +76,62 @@ const RISK_SEVERITY_WEIGHT: Record<string, number> = { CRITICAL: 20, HIGH: 12, M
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
 /**
- * Chỉ số sức khỏe dự án — gộp 3 tín hiệu (tiến độ/ngân sách/rủi ro) thành 1 con số 0-100,
- * để không phải tự nhìn nhiều số rời rạc mới biết dự án đang ổn hay không.
+ * Tỷ lệ an toàn — tránh chia cho 0 (dự án chưa tới ngày kế hoạch nào, hoặc chưa chi đồng nào).
+ * Khi mẫu số = 0 mà tử số > 0 (đang vượt trước kế hoạch/chi ít hơn đạt được) thì báo hiệu "rất tốt"
+ * bằng giá trị chặn 2.0 thay vì Infinity/NaN, để UI luôn hiển thị được số hữu hạn.
+ */
+function safeRatio(numerator: number, denominator: number): number {
+  if (denominator <= 0) return numerator <= 0 ? 1 : 2;
+  return numerator / denominator;
+}
+
+/**
+ * Planned Value tại thời điểm `now` — Σ theo từng giai đoạn: nếu chưa tới `plannedStart` thì đóng góp 0%,
+ * nếu đã qua `plannedEnd` thì đóng góp đủ 100% weight, ở giữa thì nội suy tuyến tính theo thời gian.
+ * Giai đoạn thiếu ngày kế hoạch coi như đóng góp 0 (thận trọng: chưa biết lịch thì coi là chưa tính vào PV)
+ * nhưng vẫn tính trong mẫu số (giữ cùng thang chuẩn hoá với EV/tiến độ gia quyền ở getProjectProgress).
+ */
+function computePvPct(phases: { weight: number; plannedStart: Date | null; plannedEnd: Date | null }[], now: Date): number {
+  let totalWeight = 0;
+  let earnedWeight = 0;
+  for (const p of phases) {
+    totalWeight += p.weight;
+    if (!p.plannedStart || !p.plannedEnd) continue;
+    const start = p.plannedStart.getTime();
+    const end = p.plannedEnd.getTime();
+    const t = now.getTime();
+    const frac = t <= start ? 0 : t >= end ? 1 : (t - start) / (end - start);
+    earnedWeight += p.weight * frac;
+  }
+  return totalWeight > 0 ? (earnedWeight / totalWeight) * 100 : 0;
+}
+
+function computeEvmMetrics(params: {
+  phases: { weight: number; plannedStart: Date | null; plannedEnd: Date | null }[];
+  progressPct: number; // tiến độ gia quyền thực tế (EV%), đã tính sẵn ở getProjectProgress
+  planned: number; // tổng ngân sách dự kiến
+  actualCost: number; // đã chi thực tế (AC)
+  now: Date;
+}): EvmMetrics {
+  const pvPct = computePvPct(params.phases, params.now);
+  const pv = (pvPct / 100) * params.planned;
+  const ev = (params.progressPct / 100) * params.planned;
+  const ac = params.actualCost;
+  return { pv, ev, ac, cpi: safeRatio(ev, ac), spi: safeRatio(ev, pv) };
+}
+
+/**
+ * Chỉ số sức khỏe dự án — gộp 3 tín hiệu (tiến độ/ngân sách/rủi ro) thành 1 con số 0-100.
+ * Điểm tiến độ và ngân sách giờ tính thẳng từ SPI/CPI (EVM chuẩn PMI) thay vì công thức tự chế trước đây.
  */
 function computeHealthScore(params: {
-  lateDays: number;
-  progressPct: number;
+  evm: EvmMetrics;
   budget: BudgetSummary;
   riskCounts: { severity: string; count: number }[];
 }): HealthScore {
-  const scheduleScore = clamp(100 - params.lateDays * 5);
-
-  let budgetScore = 100;
-  if (params.budget.planned > 0) {
-    const spentPct = (params.budget.totalSpent / params.budget.planned) * 100;
-    const paceDelta = spentPct - params.progressPct; // chi nhanh hơn tiến độ đạt được -> xấu
-    if (paceDelta > 0) budgetScore -= paceDelta * 2;
-    if (params.budget.overrun) budgetScore = Math.min(budgetScore, 30); // vượt trần ngân sách -> phạt nặng
-  }
-  budgetScore = clamp(budgetScore);
+  const scheduleScore = clamp(params.evm.spi * 100);
+  let budgetScore = clamp(params.evm.cpi * 100);
+  if (params.budget.overrun) budgetScore = Math.min(budgetScore, 30); // vượt trần ngân sách -> phạt nặng dù CPI tức thời còn ổn
 
   const riskPenalty = params.riskCounts.reduce(
     (s, r) => s + (RISK_SEVERITY_WEIGHT[r.severity] ?? 0) * r.count,
@@ -110,12 +160,14 @@ const ALERT_HREF: Record<string, string> = {
   BUDGET_OVERRUN: "/cashflow",
   UNDERGROUND_OBSTACLE: "/risks",
   CONTRACT_DEADLINE_NEAR: "/contracts",
+  PRECONSTRUCTION_RISK: "/risks",
 };
 const ALERT_ICON: Record<string, string> = {
   PAYMENT_DUE: "💰", PAYMENT_OVERDUE: "🚨",
   HOLD_POINT_REQUESTED: "⛔", HOLD_POINT_EXPIRING: "⏰",
   IDLE_PENALTY_RUNNING: "🛑", PILE_VARIANCE: "📏",
   BUDGET_OVERRUN: "📈", UNDERGROUND_OBSTACLE: "⚠️", CONTRACT_DEADLINE_NEAR: "📅",
+  PRECONSTRUCTION_RISK: "🚧",
 };
 
 export async function getDashboardData(projectId: string): Promise<DashboardData> {
@@ -188,9 +240,20 @@ export async function getDashboardData(projectId: string): Promise<DashboardData
     lateDays = Math.max(0, daysBetween(currentPhase.plannedEnd, new Date()) - forceMajeureDays);
   }
 
-  const healthScore = computeHealthScore({
-    lateDays,
+  const evm = computeEvmMetrics({
+    phases: phasesRaw.map((p) => ({
+      weight: Number(p.weight),
+      plannedStart: p.plannedStart,
+      plannedEnd: p.plannedEnd,
+    })),
     progressPct: pct,
+    planned: budget.planned,
+    actualCost: budget.totalSpent,
+    now: new Date(),
+  });
+
+  const healthScore = computeHealthScore({
+    evm,
     budget,
     riskCounts: riskCountsRaw.map((r) => ({ severity: r.severity, count: r._count })),
   });
@@ -279,6 +342,7 @@ export async function getDashboardData(projectId: string): Promise<DashboardData
     project: { id: project.id, name: project.name, status: project.status },
     progress: { pct, lateDays, forceMajeureDays },
     budget,
+    evm,
     actions,
     phases: [
       ...phasesRaw.map((p) => ({
