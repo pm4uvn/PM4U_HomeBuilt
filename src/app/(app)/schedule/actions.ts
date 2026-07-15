@@ -670,6 +670,38 @@ export async function updateDailyLogItemFields(id: string, data: { dueDate?: str
   revalidate();
 }
 
+/** Thêm 1 bình luận cập nhật tiến độ/trạng thái cho 1 việc trong nhật ký — kiểu chat, không cần sửa field cứng */
+export async function addDailyLogItemComment(itemId: string, body: string) {
+  const user = await requireUser();
+  const text = body.trim();
+  if (!text) return;
+  await prisma.dailyLogItemComment.create({
+    data: { dailyLogItemId: itemId, authorEmail: user.email ?? "unknown", body: text },
+  });
+  revalidate();
+}
+
+export async function deleteDailyLogItemComment(commentId: string) {
+  await requireUser();
+  await prisma.dailyLogItemComment.delete({ where: { id: commentId } });
+  revalidate();
+}
+
+/** Thả/bỏ cảm xúc kiểu Facebook trên 1 việc — bấm lại cùng emoji thì gỡ ra (toggle theo người thả) */
+export async function toggleDailyLogItemReaction(itemId: string, emoji: string) {
+  const user = await requireUser();
+  const authorEmail = user.email ?? "unknown";
+  const existing = await prisma.dailyLogItemReaction.findUnique({
+    where: { dailyLogItemId_emoji_authorEmail: { dailyLogItemId: itemId, emoji, authorEmail } },
+  });
+  if (existing) {
+    await prisma.dailyLogItemReaction.delete({ where: { id: existing.id } });
+  } else {
+    await prisma.dailyLogItemReaction.create({ data: { dailyLogItemId: itemId, emoji, authorEmail } });
+  }
+  revalidate();
+}
+
 /** Xóa 1 bản ghi nhật ký công trình */
 export async function deleteDailyLog(id: string) {
   await requireUser();

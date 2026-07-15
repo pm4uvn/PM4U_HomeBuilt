@@ -626,6 +626,32 @@ model DailyLogItem {
   workType    DailyLogWorkType? // loại công việc — dùng lọc/báo cáo theo nhóm (Pháp lý, Mặt bằng, Ép cọc...)
   pic         String?    // người/đơn vị phụ trách (PIC) — combobox gợi ý từ stakeholder/nhà thầu, vẫn gõ tên mới được
   sortOrder   Int        @default(0)
+  comments    DailyLogItemComment[]  // bình luận cập nhật tiến độ theo thời gian thực, kiểu Facebook
+  reactions   DailyLogItemReaction[] // thả cảm xúc (👍❤️😂😮😢) — 1 người chỉ thả 1 lần / loại cảm xúc / việc
+}
+
+/** Bình luận trao đổi trên 1 việc cụ thể trong nhật ký — cập nhật trạng thái/tiến độ dạng chat thay vì phải sửa lại field cứng */
+model DailyLogItemComment {
+  id             String       @id @default(cuid())
+  dailyLogItemId String
+  dailyLogItem   DailyLogItem @relation(fields: [dailyLogItemId], references: [id], onDelete: Cascade)
+  authorEmail    String
+  body           String
+  createdAt      DateTime     @default(now())
+
+  @@index([dailyLogItemId])
+}
+
+/** Thả cảm xúc kiểu Facebook trên 1 việc — toggle bật/tắt theo (việc, cảm xúc, người thả) */
+model DailyLogItemReaction {
+  id             String       @id @default(cuid())
+  dailyLogItemId String
+  dailyLogItem   DailyLogItem @relation(fields: [dailyLogItemId], references: [id], onDelete: Cascade)
+  emoji          String
+  authorEmail    String
+  createdAt      DateTime     @default(now())
+
+  @@unique([dailyLogItemId, emoji, authorEmail])
 }
 
 enum Weather {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { ModalButton } from "@/components/Modal";
 import { PreviewButton } from "@/components/FilePreview";
 import { Button, Field, Input, Select, Textarea, Tag, Card } from "@/components/ui";
@@ -20,6 +20,7 @@ import {
   uploadDailyLogVoiceNote, uploadMilestoneVoiceNote, uploadMilestoneTaskVoiceNote,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
   toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask, updateMilestoneTaskFields,
+  addDailyLogItemComment, deleteDailyLogItemComment, toggleDailyLogItemReaction,
 } from "./actions";
 import type { PhaseType } from "@prisma/client";
 
@@ -783,18 +784,150 @@ export function EditDailyLogForm({
  * Việc nào KHÔNG tự gắn mốc/vật tư riêng thì thừa hưởng (fallback) mốc/vật tư chung của cả ngày,
  * hiện mờ hơn (opacity thấp) để phân biệt với liên kết gắn riêng cho đúng việc đó.
  */
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
+
+/**
+ * Thanh cảm xúc + bình luận kiểu Facebook cho 1 việc trong nhật ký — cập nhật trạng thái/tiến độ
+ * qua trao đổi ngắn thay vì phải sửa lại field cứng. "Realtime" bằng polling nhẹ (router.refresh()
+ * mỗi 5s) CHỈ khi khung bình luận đang mở — không thêm hạ tầng WebSocket/Supabase Realtime cho 1
+ * tính năng phụ, đơn giản và đủ dùng cho vài người dùng cùng dự án.
+ */
+function DailyLogItemDiscussion({
+  itemId,
+  comments,
+  reactions,
+  myEmail,
+}: {
+  itemId: string;
+  comments: { id: string; authorEmail: string; body: string; createdAt: string }[];
+  reactions: { emoji: string; count: number; reactedByMe: boolean }[];
+  myEmail: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [text, setText] = useState("");
+  const [, startTransition] = useTransition();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => router.refresh(), 5000);
+    return () => clearInterval(id);
+  }, [open, router]);
+
+  const reactionMap = new Map(reactions.map((r) => [r.emoji, r]));
+  const myReaction = reactions.find((r) => r.reactedByMe);
+  const totalReactions = reactions.reduce((s, r) => s + r.count, 0);
+
+  const react = (e: string) => {
+    startTransition(() => { void toggleDailyLogItemReaction(itemId, e); });
+    setShowPicker(false);
+  };
+
+  return (
+    <div className="mt-1">
+      <div className="flex items-center gap-1 flex-wrap">
+        {/* Chỉ hiện 1 nút "Thích" mặc định — bấm vào mới xổ ra đủ 5 lựa chọn cảm xúc, đỡ rối hàng nút */}
+        {showPicker ? (
+          REACTION_EMOJIS.map((e) => {
+            const r = reactionMap.get(e);
+            return (
+              <button
+                key={e}
+                type="button"
+                onClick={() => react(e)}
+                className={`text-[12px] leading-none px-1.5 py-1 rounded-full border ${
+                  r?.reactedByMe ? "border-brand" : "border-line hover:bg-page"
+                }`}
+                style={r?.reactedByMe ? { background: "color-mix(in srgb, var(--series-1) 15%, transparent)" } : undefined}
+              >
+                {e}{r && r.count > 0 ? ` ${r.count}` : ""}
+              </button>
+            );
+          })
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            className={`text-[12px] leading-none px-2 py-1 rounded-full border ${
+              myReaction ? "border-brand" : "border-line hover:bg-page"
+            }`}
+            style={myReaction ? { background: "color-mix(in srgb, var(--series-1) 15%, transparent)" } : undefined}
+          >
+            {myReaction ? myReaction.emoji : "👍"} {myReaction ? "Đã thích" : "Thích"}
+            {totalReactions > 0 ? ` · ${totalReactions}` : ""}
+          </button>
+        )}
+        <button type="button" onClick={() => setOpen((o) => !o)} className="text-[11px] text-ink-2 hover:text-brand ml-1">
+          💬 {comments.length > 0 ? comments.length : "Bình luận"}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-1.5 pl-2 border-l-2 border-grid space-y-1.5">
+          {comments.map((c) => (
+            <div key={c.id} className="text-[12px] group flex items-start gap-1.5">
+              <span className="font-semibold text-ink-2 shrink-0">{c.authorEmail.split("@")[0]}:</span>
+              <span className="text-ink-2 flex-1 min-w-0 break-words">{c.body}</span>
+              <span className="text-[10px] text-muted shrink-0 whitespace-nowrap">{fmtDateTime(c.createdAt)}</span>
+              {c.authorEmail === myEmail && (
+                <button
+                  type="button"
+                  onClick={() => startTransition(() => { void deleteDailyLogItemComment(c.id); })}
+                  className="text-critical text-[10px] opacity-0 group-hover:opacity-100 shrink-0"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || !text.trim()) return;
+                startTransition(() => { void addDailyLogItemComment(itemId, text); });
+                setText("");
+              }}
+              placeholder="Viết bình luận cập nhật..."
+              className="flex-1 min-w-0 text-[12px] bg-transparent border border-line rounded px-2 py-1 outline-none focus:border-brand"
+            />
+            <Button
+              type="button"
+              variant="default"
+              className="!py-1 !px-2 text-[11px]"
+              disabled={!text.trim()}
+              onClick={() => {
+                startTransition(() => { void addDailyLogItemComment(itemId, text); });
+                setText("");
+              }}
+            >
+              Gửi
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DailyLogItemsView({
   items,
   dayMilestoneNames = [],
   dayVatTuNames = [],
+  myEmail = "",
 }: {
   items: {
     id: string; label: string; isChecked: boolean; dueDate: string | null;
     milestoneName: string | null; vatTuName: string | null; workType: string | null;
     documentTitle: string | null; contractLabel: string | null; pic: string | null;
+    comments?: { id: string; authorEmail: string; body: string; createdAt: string }[];
+    reactions?: { emoji: string; count: number; reactedByMe: boolean }[];
   }[];
   dayMilestoneNames?: string[];
   dayVatTuNames?: string[];
+  myEmail?: string;
 }) {
   if (items.length === 0) return null;
   const today = new Date().toISOString().slice(0, 10);
@@ -860,6 +993,12 @@ export function DailyLogItemsView({
                   )}
                 </div>
               )}
+              <DailyLogItemDiscussion
+                itemId={it.id}
+                comments={it.comments ?? []}
+                reactions={it.reactions ?? []}
+                myEmail={myEmail}
+              />
             </div>
           </div>
         );

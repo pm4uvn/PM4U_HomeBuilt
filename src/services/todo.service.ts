@@ -6,7 +6,7 @@
 import { prisma } from "@/lib/prisma";
 import { fmtDate } from "@/lib/format";
 
-export type TodoSource = "DAILY_LOG" | "MILESTONE_TASK" | "MILESTONE_CHECKLIST" | "RISK_MITIGATION";
+export type TodoSource = "DAILY_LOG" | "MILESTONE_TASK" | "MILESTONE_CHECKLIST" | "RISK_MITIGATION" | "ISSUE" | "DEFECT";
 
 export type TodoItem = {
   id: string;
@@ -14,13 +14,16 @@ export type TodoItem = {
   label: string;
   context: string;
   pic: string | null;
+  startDate: string | null;
   dueDate: string | null;
+  percentComplete: number | null;
   isOverdue: boolean;
+  delayDays: number | null; // số ngày trễ hạn (chỉ có khi isOverdue)
   href: string;
 };
 
 export async function getTodoItems(projectId: string): Promise<TodoItem[]> {
-  const [dailyLogItems, milestoneTasks, checklistItems, mitigationActions] = await Promise.all([
+  const [dailyLogItems, milestoneTasks, checklistItems, mitigationActions, openIssues, openDefects] = await Promise.all([
     prisma.dailyLogItem.findMany({
       where: { dailyLog: { projectId }, isChecked: false },
       include: { dailyLog: { select: { logDate: true } } },
@@ -38,10 +41,26 @@ export async function getTodoItems(projectId: string): Promise<TodoItem[]> {
       where: { risk: { projectId }, isDone: false },
       include: { risk: { select: { title: true, severity: true } } },
     }),
+    prisma.issueLog.findMany({
+      where: { projectId, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      orderBy: { dueDate: "asc" },
+    }),
+    prisma.defectLog.findMany({
+      where: { projectId, status: { in: ["OPEN", "IN_PROGRESS"] } },
+      orderBy: { dueDate: "asc" },
+    }),
   ]);
 
-  const now = new Date().toISOString().slice(0, 10);
+  const nowDate = new Date();
+  const now = nowDate.toISOString().slice(0, 10);
   const items: TodoItem[] = [];
+
+  /** Trễ bao nhiêu ngày (làm tròn xuống theo ngày dương lịch), null nếu chưa trễ/chưa có hạn */
+  function overdueInfo(dueDate: string | null): { isOverdue: boolean; delayDays: number | null } {
+    if (!dueDate || dueDate.slice(0, 10) >= now) return { isOverdue: false, delayDays: null };
+    const days = Math.floor((nowDate.getTime() - new Date(dueDate).getTime()) / 86_400_000);
+    return { isOverdue: true, delayDays: Math.max(1, days) };
+  }
 
   for (const it of dailyLogItems) {
     const dueDate = it.dueDate?.toISOString() ?? null;
@@ -51,22 +70,27 @@ export async function getTodoItems(projectId: string): Promise<TodoItem[]> {
       label: it.label,
       context: `Nhật ký ${fmtDate(it.dailyLog.logDate)}`,
       pic: it.pic,
+      startDate: it.dailyLog.logDate.toISOString(), // việc nhật ký chỉ trong 1 ngày -> bắt đầu = ngày ghi nhật ký
       dueDate,
-      isOverdue: !!dueDate && dueDate.slice(0, 10) < now,
+      percentComplete: null,
+      ...overdueInfo(dueDate),
       href: "/schedule/daily-log",
     });
   }
 
   for (const t of milestoneTasks) {
     const dueDate = t.dueDate?.toISOString() ?? null;
+    const startDate = dueDate ? new Date(new Date(dueDate).getTime() - t.durationDays * 86_400_000).toISOString() : null;
     items.push({
       id: t.id,
       source: "MILESTONE_TASK",
       label: t.name,
       context: `${t.milestone.phase.name} · ${t.milestone.name}`,
       pic: t.responsible,
+      startDate,
       dueDate,
-      isOverdue: !!dueDate && dueDate.slice(0, 10) < now,
+      percentComplete: t.percentComplete,
+      ...overdueInfo(dueDate),
       href: "/schedule",
     });
   }
@@ -78,8 +102,11 @@ export async function getTodoItems(projectId: string): Promise<TodoItem[]> {
       label: c.label,
       context: `${c.milestone.phase.name} · ${c.milestone.name}`,
       pic: null,
+      startDate: null,
       dueDate: null,
+      percentComplete: null,
       isOverdue: false,
+      delayDays: null,
       href: "/schedule",
     });
   }
@@ -91,9 +118,44 @@ export async function getTodoItems(projectId: string): Promise<TodoItem[]> {
       label: m.label,
       context: `Rủi ro: ${m.risk.title}`,
       pic: null,
+      startDate: null,
       dueDate: null,
+      percentComplete: null,
       isOverdue: false,
+      delayDays: null,
       href: "/risks",
+    });
+  }
+
+  for (const i of openIssues) {
+    const dueDate = i.dueDate?.toISOString() ?? null;
+    items.push({
+      id: i.id,
+      source: "ISSUE",
+      label: i.title,
+      context: `Issue Log${i.category ? ` · ${i.category}` : ""}`,
+      pic: i.owner,
+      startDate: i.raisedDate.toISOString(),
+      dueDate,
+      percentComplete: null,
+      ...overdueInfo(dueDate),
+      href: "/issues",
+    });
+  }
+
+  for (const d of openDefects) {
+    const dueDate = d.dueDate?.toISOString() ?? null;
+    items.push({
+      id: d.id,
+      source: "DEFECT",
+      label: d.title,
+      context: `Bảo hành${d.location ? ` · ${d.location}` : ""}`,
+      pic: d.owner,
+      startDate: d.reportedDate.toISOString(),
+      dueDate,
+      percentComplete: null,
+      ...overdueInfo(dueDate),
+      href: "/defects",
     });
   }
 
