@@ -687,16 +687,19 @@ export async function deleteDailyLogItemComment(commentId: string) {
   revalidate();
 }
 
-/** Thả/bỏ cảm xúc kiểu Facebook trên 1 việc — bấm lại cùng emoji thì gỡ ra (toggle theo người thả) */
+/**
+ * Thả/bỏ cảm xúc kiểu Facebook trên 1 việc — mỗi người CHỈ được 1 cảm xúc / việc (không phải 1 người
+ * thả được nhiều loại cùng lúc kiểu Slack): bấm lại đúng emoji đang thả thì gỡ ra, bấm emoji khác thì
+ * thay thế cảm xúc cũ bằng cảm xúc mới.
+ */
 export async function toggleDailyLogItemReaction(itemId: string, emoji: string) {
   const user = await requireUser();
   const authorEmail = user.email ?? "unknown";
-  const existing = await prisma.dailyLogItemReaction.findUnique({
-    where: { dailyLogItemId_emoji_authorEmail: { dailyLogItemId: itemId, emoji, authorEmail } },
+  const existing = await prisma.dailyLogItemReaction.findFirst({
+    where: { dailyLogItemId: itemId, authorEmail },
   });
-  if (existing) {
-    await prisma.dailyLogItemReaction.delete({ where: { id: existing.id } });
-  } else {
+  if (existing) await prisma.dailyLogItemReaction.delete({ where: { id: existing.id } });
+  if (!existing || existing.emoji !== emoji) {
     await prisma.dailyLogItemReaction.create({ data: { dailyLogItemId: itemId, emoji, authorEmail } });
   }
   revalidate();

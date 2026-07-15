@@ -792,7 +792,7 @@ const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
  * mỗi 5s) CHỈ khi khung bình luận đang mở — không thêm hạ tầng WebSocket/Supabase Realtime cho 1
  * tính năng phụ, đơn giản và đủ dùng cho vài người dùng cùng dự án.
  */
-function DailyLogItemDiscussion({
+export function DailyLogItemDiscussion({
   itemId,
   comments,
   reactions,

@@ -273,6 +273,8 @@ model PenaltyRule {
   contractId String
   contract   Contract     @relation(fields: [contractId], references: [id])
   type       PenaltyType
+  label      String?      // tên điều khoản tự đặt — bắt buộc có ý nghĩa khi type=CUSTOM, các type còn lại đã có tên chuẩn sẵn (PENALTY_TYPE)
+  party      PenaltyParty @default(CONTRACTOR) // bên chịu phạt nếu vi phạm — hiện rõ để dễ phân biệt Nhà thầu/CĐT
   basis      PenaltyBasis
   rate       Decimal      @db.Decimal(12, 4)
   // basis=PCT_OF_CONTRACT_PER_DAY: rate=0.05 nghĩa là 0.05%/ngày
@@ -290,6 +292,13 @@ enum PenaltyType {
   TERMINATION              // hủy ngang HĐ (8% giá trị HĐ)
   FAKE_MATERIAL            // vật tư giả/sai xuất xứ (8% giá trị vật tư)
   OWNER_IDLE_WAIT          // CĐT gây chờ việc (4tr/ngày)
+  CUSTOM                   // điều khoản tự đặt, không thuộc 5 loại chuẩn — dùng field `label` để mô tả
+}
+
+enum PenaltyParty {
+  CONTRACTOR // nhà thầu chịu phạt nếu vi phạm
+  OWNER      // chủ đầu tư (CĐT) chịu phạt nếu vi phạm
+  EITHER     // áp dụng cho bên nào vi phạm/khởi xướng trước — VD hủy ngang hợp đồng
 }
 
 enum PenaltyBasis {
@@ -297,6 +306,7 @@ enum PenaltyBasis {
   PCT_OF_CONTRACT
   PCT_OF_ITEM_VALUE
   FIXED_PER_DAY
+  FIXED_ONE_TIME // khoản bồi thường cố định 1 lần, không theo ngày/% (VD phí vận chuyển máy ép cọc khi hủy thi công)
 }
 
 // --- Sự kiện phạt thực tế phát sinh (để đối soát & khấu trừ vào đợt thanh toán) ---

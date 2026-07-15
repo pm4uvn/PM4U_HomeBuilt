@@ -15,3 +15,6 @@ HomeBuild_PM_vat_tu_hoan_thien_tieng_viet.xlsx
 HomeBuild_PM_database_vat_tu_hoan_thien_gia_web_*.xlsx
 HomeBuild_PM_database_thiet_bi_dien_tu_master_*.xlsx
 BẢNG TIẾN ĐỘ THI CÔNG CĐT HUỲNH MINH SANG.pdf
+
+.vercel
+.env*

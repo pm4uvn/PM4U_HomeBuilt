@@ -1,14 +1,17 @@
 /**
- * Knowledge Base — module "Kiểm soát khởi công & nền móng" (Pre-Construction & Foundation Control).
- * Nội dung tham khảo thực tế, đúc kết theo kinh nghiệm quản lý dự án xây dựng nhà ở dân dụng VN.
+ * Knowledge Base — tài liệu tra cứu nhanh theo từng giai đoạn xây dựng nhà ở dân dụng VN.
+ * Nội dung tham khảo thực tế, đúc kết theo kinh nghiệm quản lý dự án.
  * Nội dung tĩnh (không lưu DB) — hiển thị làm tài liệu tra cứu nhanh, không phải checklist thao tác.
  */
+
+export const KNOWLEDGE_CATEGORY_DEFAULT = "Khởi công & nền móng";
 
 export type KnowledgeArticle = {
   topic: string;
   summary: string;
   points: string[];
   images?: string[]; // đường dẫn tĩnh trong /public/knowledge/<slug>/...
+  category?: string; // nhóm chủ đề — mặc định KNOWLEDGE_CATEGORY_DEFAULT nếu không khai báo
 };
 
 export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
@@ -241,6 +244,183 @@ export const KNOWLEDGE_BASE: KnowledgeArticle[] = [
       "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/03_ep_tai_coc_be_tong_vuong.jpg",
       "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/07_coc_khoan_nhoi_D400_chong_sat_lo.jpg",
       "/knowledge/ep-coc-neo-ep-tai-khoan-nhoi/10_can_canh_long_thep_coc_khoan_nhoi.jpg",
+    ],
+  },
+
+  // ===== Xây dựng phần thô (Rough Construction) =====
+  {
+    topic: "Nguyên tắc quản lý phần thô",
+    category: "Xây dựng phần thô",
+    summary: "Phần thô quyết định 70-80% tuổi thọ và độ an toàn công trình — sai ở đây rất khó/tốn kém để sửa sau.",
+    points: [
+      "Phần thô gồm: móng, khung bê tông cốt thép (cột/dầm/sàn/cầu thang), xây tường, MEP âm, tô trát — làm xong mới tới hoàn thiện",
+      "Nguyên tắc vàng: không đổ bê tông/lấp khuất bất kỳ hạng mục nào khi chưa nghiệm thu công đoạn trước (cốt thép, cốp pha, lỗ chờ, đường ống âm)",
+      "Mọi sai sót ở phần thô (kích thước cột/dầm, vị trí lỗ chờ, cao độ sàn) đều rất tốn kém hoặc bất khả thi để sửa sau khi hoàn thiện",
+      "CĐT/giám sát cần có mặt hoặc yêu cầu ảnh/video xác nhận tại đúng các bước dừng kỹ thuật (Hold Point), không chỉ xem báo cáo bằng lời",
+      "Lưu hồ sơ nghiệm thu từng công đoạn (biên bản, ảnh, kết quả thí nghiệm) làm căn cứ bảo hành/khiếu nại về sau",
+    ],
+  },
+  {
+    topic: "Công tác móng và công trình ngầm",
+    category: "Xây dựng phần thô",
+    summary: "Kiểm soát hố móng, cốt thép, cốp pha và hệ thống ngầm trước khi đổ bê tông móng.",
+    points: [
+      "Kiểm tra cao độ đáy móng, kích thước hố móng đúng bản vẽ trước khi đổ bê tông lót",
+      "Bê tông lót móng (đá 4x6, mác thấp) tạo mặt phẳng sạch, chống mất nước xi măng vào đất — bắt buộc có, không được bỏ qua",
+      "Cốt thép móng: đúng đường kính, số lượng, khoảng cách, chiều dài neo/nối theo bản vẽ kết cấu; có kê con kê đảm bảo lớp bê tông bảo vệ",
+      "Đặt sẵn thép chờ cột, thép chờ vách đúng vị trí, đủ chiều dài neo trước khi đổ bê tông móng — sai vị trí phải đục phá rất khó sửa",
+      "Đường ống cấp thoát nước ngầm, hố ga, hộp kỹ thuật dưới nền phải thi công/thử áp và nghiệm thu xong TRƯỚC khi đổ bê tông móng/nền, tránh đào lại sau này",
+      "Cốp pha móng kín khít, đủ cứng, chống phình khi đổ — kiểm tra lại trước khi đổ bê tông",
+      "Đây là Hold Point bắt buộc: không đổ bê tông móng khi chưa nghiệm thu cốt thép + cốp pha + hệ ngầm",
+    ],
+  },
+  {
+    topic: "Khung bê tông cốt thép (cột, dầm, sàn)",
+    category: "Xây dựng phần thô",
+    summary: "Kiểm soát cốt thép và cốp pha khung chịu lực — công đoạn quyết định an toàn kết cấu công trình.",
+    points: [
+      "Thép đúng chủng loại/mác theo thiết kế, có chứng chỉ xuất xưởng, không gỉ sét nặng/bám bẩn dầu mỡ trước khi lắp đặt",
+      "Nối thép đúng vị trí (tránh nối tại vị trí mô men lớn), đủ chiều dài nối chồng hoặc dùng ống nối ren theo thiết kế",
+      "Khoảng hở giữa các thanh thép, lớp bê tông bảo vệ (con kê) đúng quy định — sai sẽ gây nứt/gỉ thép sớm về sau",
+      "Cốp pha cột/dầm/sàn phải kín khít, đúng tim trục, đúng cao độ, được chống đỡ chắc chắn (giáo chống đủ số lượng, đúng khoảng cách)",
+      "Kiểm tra độ thẳng đứng của cột, độ võng cốp pha dầm/sàn trước khi đổ — không để cốp pha bị phình/lún khi đổ bê tông",
+      "Nghiệm thu cốt thép + cốp pha là Hold Point bắt buộc trước khi đổ bê tông từng cấu kiện (cột, dầm, sàn từng tầng)",
+      "Tháo cốp pha đúng thời gian tối thiểu theo cấu kiện (cột/dầm cạnh thường sớm hơn đáy dầm/sàn chịu lực) để tránh nứt/võng do tháo sớm",
+    ],
+  },
+  {
+    topic: "Lỗ kỹ thuật (sleeve) trong kết cấu",
+    category: "Xây dựng phần thô",
+    summary: "Đặt sẵn lỗ chờ cho đường ống điện nước xuyên qua dầm/sàn — bỏ sót phải đục phá, ảnh hưởng kết cấu.",
+    points: [
+      "Lỗ kỹ thuật (sleeve) là ống/lỗ chờ đặt sẵn trong cốp pha trước khi đổ bê tông để đường ống điện nước/điều hòa xuyên qua dầm, sàn, tường bê tông",
+      "Phải có bản vẽ MEP kết hợp bản vẽ kết cấu (bản vẽ đục lỗ/sleeve) được kỹ sư kết cấu duyệt trước khi thi công — không tự ý đục lỗ sau khi đổ bê tông",
+      "Lỗ xuyên dầm chỉ được đặt trong vùng cho phép theo thiết kế (thường ở giữa nhịp, vùng ứng suất thấp), không xuyên qua vùng gần gối/mép dầm",
+      "Đường kính lỗ và khoảng cách giữa các lỗ phải theo quy định kết cấu — lỗ quá lớn/quá gần nhau làm suy yếu tiết diện chịu lực",
+      "Đục phá bê tông đã đông cứng để tạo lỗ (do bỏ sót từ đầu) là điều TUYỆT ĐỐI TRÁNH — ảnh hưởng nghiêm trọng đến khả năng chịu lực của dầm/sàn",
+      "Kiểm tra vị trí sleeve khi nghiệm thu cốt thép/cốp pha trước khi đổ bê tông — đây là bước dễ bị bỏ sót nhất trong thực tế thi công",
+    ],
+  },
+  {
+    topic: "Sàn khu ướt (WC, ban công, sân thượng, mái)",
+    category: "Xây dựng phần thô",
+    summary: "Chi tiết cao độ, độ dốc, chống thấm cho các khu vực tiếp xúc nước — nguồn thấm dột phổ biến nhất.",
+    points: [
+      "Cao độ sàn WC/ban công phải thấp hơn sàn phòng liền kề tối thiểu 1-2cm để tránh nước tràn ngược ra ngoài",
+      "Sàn phải có độ dốc (khoảng 1-2%) về phía phễu thu sàn, tránh đọng nước cục bộ",
+      "Sân thượng/mái bằng cần có độ dốc rõ ràng về máng/ống thoát nước mưa, không để đọng nước gây thấm lâu dài",
+      "Chống thấm phải thi công đủ lớp (gốc xi măng hai thành phần hoặc màng khò nóng), phủ lên chân tường tối thiểu 15-20cm, không chỉ chống thấm mặt sàn",
+      "Bắt buộc thử nước (ngâm nước tối thiểu 24h, có nơi yêu cầu 48-72h) sau khi thi công chống thấm và TRƯỚC khi cán nền/ốp lát — đây là Hold Point quan trọng nhất chống thấm phần thô",
+      "Vị trí xuyên sàn (ống thoát sàn, ống thông hơi) phải xử lý chống thấm kỹ quanh miệng ống — điểm hay bị rò rỉ nhất dù đã chống thấm toàn mặt sàn",
+      "Ghi nhận bằng ảnh/video quá trình thử nước làm hồ sơ nghiệm thu, tránh tranh chấp bảo hành thấm dột về sau",
+    ],
+  },
+  {
+    topic: "Đổ và bảo dưỡng bê tông",
+    category: "Xây dựng phần thô",
+    summary: "Quy trình đổ và dưỡng ẩm đúng kỹ thuật quyết định cường độ và độ bền thực tế của bê tông.",
+    points: [
+      "Kiểm tra độ sụt bê tông tại công trường trước khi đổ (thường 10-14cm với bê tông thương phẩm bơm), lấy mẫu thử nén (3 tổ mẫu/mẻ đổ lớn) để kiểm tra cường độ 7 và 28 ngày",
+      "Đổ bê tông liên tục theo lớp, đầm kỹ bằng đầm dùi tại mọi vị trí (đặc biệt góc cột, dưới đáy dầm) để tránh rỗ tổ ong",
+      "Không đổ bê tông khi trời mưa to hoặc để nước mưa đọng làm loãng bê tông tại vị trí đang đổ",
+      "Bảo dưỡng bằng cách tưới nước giữ ẩm liên tục tối thiểu 7 ngày đầu (bê tông dùng xi măng thường), có thể phủ bạt/bao tải ẩm để giảm bốc hơi nước nhanh dưới nắng",
+      "Không đi lại, chất tải, tháo cốp pha đáy dầm/sàn sớm trước khi bê tông đạt đủ cường độ tối thiểu theo quy định (thường 70% cường độ thiết kế với sàn/dầm)",
+      "Mạch ngừng thi công (nếu không đổ liên tục hết cấu kiện) phải xử lý đúng kỹ thuật (làm sạch, tạo nhám, quét phụ gia kết dính) để tránh tách lớp bê tông cũ-mới",
+    ],
+  },
+  {
+    topic: "Công tác xây tường",
+    category: "Xây dựng phần thô",
+    summary: "Kỹ thuật xây gạch đúng chuẩn để tường không nứt, không thấm, chịu lực tốt cùng khung bê tông.",
+    points: [
+      "Gạch xây đúng chủng loại theo thiết kế (gạch đặc/gạch ống/gạch không nung), tưới ẩm gạch trước khi xây để tránh hút nước vữa gây nứt chân chim",
+      "Mạch vữa đều, dày 8-12mm, các hàng gạch xây so le mạch (không trùng mạch đứng) để tăng liên kết",
+      "Vị trí tiếp giáp tường-cột/tường-dầm bắt buộc có râu thép chờ (đã đặt từ khi đổ bê tông) hoặc khoan cấy thép, để chống nứt ngang tại mối nối",
+      "Tường xây cao phải chừa mạch chờ (thường không xây quá 1.5m/ngày liên tục) để tránh sập/nghiêng khi vữa chưa đủ cường độ",
+      "Vị trí tường tiếp giáp trần/dầm phía trên phải xây xiên hoặc chèn vữa kỹ (không để hở mạch trên cùng), tránh nứt do co ngót sau này",
+      "Tường ngoài trời, tường khu ướt cần lưới chống nứt tại vị trí tiếp giáp vật liệu khác nhau (gạch-bê tông) trước khi tô trát",
+    ],
+  },
+  {
+    topic: "Cửa và lanh tô",
+    category: "Xây dựng phần thô",
+    summary: "Lanh tô (đà lanh tô) trên các ô cửa phải đủ khả năng chịu lực trước khi xây tiếp phía trên.",
+    points: [
+      "Lanh tô là dầm bê tông cốt thép nhỏ đặt trên đầu cửa (cửa đi, cửa sổ) để đỡ tải trọng tường phía trên, tránh nứt/sập tại các ô cửa",
+      "Chiều dài lanh tô phải gối vào tường hai bên tối thiểu 20-25cm mỗi đầu, không chỉ vừa khít bằng chiều rộng ô cửa",
+      "Với ô cửa lớn hoặc chịu tải tường cao phía trên, cần tính toán lanh tô như dầm phụ, không dùng lanh tô đúc sẵn kích thước nhỏ tùy tiện",
+      "Khung bao cửa (nếu âm tường) cần thi công đồng bộ với lanh tô, chú ý chống thấm tại bậu cửa đi ra ban công/sân thượng",
+      "Không xây tiếp phần tường phía trên khi lanh tô chưa đủ cường độ bảo dưỡng tối thiểu",
+    ],
+  },
+  {
+    topic: "Hệ thống điện nước âm (MEP phần thô)",
+    category: "Xây dựng phần thô",
+    summary: "Đường ống điện nước đi âm tường/sàn phải hoàn thiện, thử áp và nghiệm thu trước khi tô trát/cán nền.",
+    points: [
+      "Đường ống điện âm tường đi trong rãnh cắt đủ sâu, cố định chắc bằng vữa/kẹp, không để ống lồi khỏi mặt tường gây tô trát mỏng cục bộ dễ nứt",
+      "Đường ống nước cấp/thoát âm tường-sàn phải đúng độ dốc (đường thoát), đủ độ bền chịu áp — thử áp lực nước (thường tối thiểu 6-8 giờ, áp lực gấp 1.5 lần áp lực làm việc) trước khi lấp/tô trát che khuất",
+      "Dây điện luồn ống gen, không đi trần trong tường; hộp âm công tắc/ổ cắm đúng cao độ theo bản vẽ điện trước khi tô trát",
+      "Vị trí đường ống MEP xuyên qua tường/sàn phải trùng với lỗ kỹ thuật (sleeve) đã đặt sẵn khi đổ bê tông, không tự khoan đục thêm",
+      "Bắt buộc nghiệm thu toàn bộ hệ MEP âm (đi đường ống đúng bản vẽ, thử áp đạt, chụp ảnh định vị từng đường ống) TRƯỚC khi tô trát/cán nền — đây là Hold Point, sau khi tô trát rất khó sửa nếu có lỗi",
+      "Lưu bản vẽ hoàn công MEP âm kèm ảnh chụp thực tế trước khi lấp — tài liệu quan trọng nhất khi cần sửa chữa/khoan tường về sau mà không làm đứt đường ống",
+    ],
+  },
+  {
+    topic: "Công tác tô trát",
+    category: "Xây dựng phần thô",
+    summary: "Tô trát đúng kỹ thuật giúp bề mặt phẳng, không nứt, làm nền tốt cho sơn/ốp lát hoàn thiện.",
+    points: [
+      "Bề mặt tường/cột/dầm phải được vệ sinh sạch, tưới ẩm trước khi tô, đảm bảo hệ MEP âm đã nghiệm thu xong hoàn toàn",
+      "Vị trí tiếp giáp vật liệu khác nhau (tường gạch - cột/dầm bê tông) phải căng lưới thép/lưới sợi thủy tinh chống nứt trước khi tô, đây là vị trí nứt tô trát phổ biến nhất",
+      "Tô trát đủ độ dày quy định (thường 1.5-2cm), tô làm nhiều lớp nếu bề mặt lồi lõm nhiều, không tô quá dày 1 lớp gây bong tróc",
+      "Cán mốc, đóng nẹp góc trước khi tô để đảm bảo bề mặt phẳng, các góc cạnh (góc tường, góc cửa) vuông vắn, sắc nét",
+      "Bảo dưỡng lớp tô bằng cách tưới ẩm 2-3 ngày đầu, tránh tô trát dưới trời nắng gắt trực tiếp làm mất nước quá nhanh gây nứt chân chim",
+      "Để bề mặt tô khô đủ thời gian (thường tối thiểu 7 ngày, tùy điều kiện thời tiết) trước khi sơn bả để tránh phồng rộp sơn do độ ẩm còn cao trong tường",
+    ],
+  },
+  {
+    topic: "Lỗi phần thô thường gặp",
+    category: "Xây dựng phần thô",
+    summary: "Các lỗi phổ biến nhất theo kinh nghiệm thực tế — nhận diện sớm để yêu cầu khắc phục kịp thời.",
+    points: [
+      "Rỗ tổ ong ở cột/dầm: do đầm không kỹ hoặc cốp pha hở mạch — hậu quả giảm khả năng chịu lực, thép dễ gỉ; phòng ngừa bằng đầm dùi đều tay, cốp pha kín khít",
+      "Nứt chân chim tường mới xây/tô: do bảo dưỡng thiếu nước hoặc thiếu lưới chống nứt tại mối nối vật liệu khác nhau; phòng ngừa bằng tưới ẩm đều và căng lưới đúng vị trí",
+      "Thấm sàn WC/ban công/sân thượng: do bỏ qua bước thử nước hoặc chống thấm không phủ đủ chân tường; phòng ngừa bằng thử nước 24-48h bắt buộc trước khi cán nền/ốp lát",
+      "Sai lệch/thiếu lỗ kỹ thuật (sleeve): do không phối hợp bản vẽ MEP-kết cấu từ đầu, dẫn đến đục phá bê tông sau này; phòng ngừa bằng duyệt bản vẽ sleeve trước khi lắp cốt thép",
+      "Sai cao độ nền/sàn khu ướt: do không kiểm tra cao độ trước khi đổ bê tông, gây nước tràn ngược; phòng ngừa bằng kiểm tra cao độ bằng máy thủy bình trước mỗi lần đổ",
+      "Nứt ngang tại mối nối tường-cột: do thiếu râu thép chờ hoặc không cấy thép đúng kỹ thuật; phòng ngừa bằng đặt râu thép từ khi đổ cột hoặc khoan cấy thép đúng độ sâu/keo chuyên dụng",
+      "Vỡ/rò rỉ đường ống âm sau khi tô trát: do không thử áp trước khi lấp hoặc thi công ẩu; phòng ngừa bằng thử áp lực nước bắt buộc + chụp ảnh định vị trước khi tô trát",
+    ],
+  },
+  {
+    topic: "10 điểm dừng nghiệm thu phần thô (Hold Points)",
+    category: "Xây dựng phần thô",
+    summary: "10 mốc bắt buộc dừng lại kiểm tra/nghiệm thu trước khi thi công tiếp — không được bỏ qua dù chỉ 1 điểm.",
+    points: [
+      "1. Nghiệm thu cao độ đáy hố móng + bê tông lót trước khi lắp cốt thép móng",
+      "2. Nghiệm thu cốt thép + cốp pha móng (kể cả thép chờ cột, hệ ngầm) trước khi đổ bê tông móng",
+      "3. Nghiệm thu hệ thống cấp thoát nước ngầm (đã thử áp) trước khi lấp đất/đổ bê tông nền",
+      "4. Nghiệm thu cốt thép + cốp pha cột/dầm/sàn từng tầng (kể cả lỗ kỹ thuật/sleeve) trước khi đổ bê tông",
+      "5. Kiểm tra kết quả thí nghiệm mẫu bê tông đạt cường độ tối thiểu trước khi tháo cốp pha đáy dầm/sàn",
+      "6. Nghiệm thu công tác xây tường (đúng mạch, có râu thép/lưới chống nứt tại mối nối) trước khi tô trát",
+      "7. Nghiệm thu hệ thống điện nước âm (đúng bản vẽ, đã thử áp) trước khi tô trát/cán nền che khuất",
+      "8. Thử nước sàn khu ướt (WC, ban công, sân thượng, mái) tối thiểu 24h trước khi cán nền/ốp lát",
+      "9. Nghiệm thu công tác tô trát (độ phẳng, không nứt, đủ thời gian khô) trước khi chuyển sang sơn bả/ốp lát",
+      "10. Nghiệm thu tổng thể phần thô (đối chiếu toàn bộ hồ sơ hoàn công + hình ảnh các điểm dừng trên) trước khi ký biên bản chuyển giai đoạn sang hoàn thiện",
+    ],
+  },
+  {
+    topic: "Áp dụng phần thô cho nhà 5×10m (HenryHouse)",
+    category: "Xây dựng phần thô",
+    summary: "Lưu ý riêng khi kiểm soát phần thô cho nhà phố 1 trệt 3 lầu, diện tích đất 5×10m, mặt tiền hẹp.",
+    points: [
+      "Mặt bằng hẹp (ngang 5m) — cốp pha cột/dầm biên sát ranh cần đặc biệt kiểm tra độ thẳng đứng, tránh lệch tim ảnh hưởng khoảng lùi với nhà kế bên",
+      "Nhà 3 lầu + sân thượng/mái: mỗi tầng sàn là 1 điểm dừng đổ bê tông riêng — theo dõi đủ 4 lần nghiệm thu cốt thép/cốp pha (sàn lầu 1, lầu 2, sân thượng, mái) trong tiến độ Gantt hiện có",
+      "Khu WC các tầng + ban công + sân thượng + mái đều phải thử nước riêng từng vị trí trước khi cán nền — với nhà phố nhiều tầng, đây là điểm dễ bị rút gọn thời gian nhất do áp lực tiến độ, cần giám sát chặt",
+      "Lỗ kỹ thuật cho đường ống điều hòa/nước xuyên sàn giữa các tầng cần xác nhận đúng vị trí theo bản vẽ MEP trước khi đổ từng sàn — nhà cao tầng đi lại đường ống dọc nhiều, dễ sai lệch giữa các tầng nếu không đối chiếu",
+      "Mặt tiền hẹp giáp nhà lân cận hai bên: xây tường biên, chống thấm tường ngoài cần lưu ý khe co giãn/khe lún với nhà kế bên (nếu có), tránh nứt lan do lún lệch",
+      "Toàn bộ 10 điểm dừng nghiệm thu nên đối chiếu với các mốc tương ứng đã có sẵn trong Gantt tiến độ (móng, sàn lầu 1/2, sân thượng, mái, xây tô) để gắn ảnh/ghi âm hiện trường ngay tại đúng milestone",
     ],
   },
 ];

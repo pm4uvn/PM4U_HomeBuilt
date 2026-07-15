@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { computeStageGrossAmount } from "@/lib/payment-calc";
 import { logAudit } from "@/lib/audit";
 import type {
-  VendorType, ContractStatus, PenaltyType, PenaltyBasis,
+  VendorType, ContractStatus, PenaltyType, PenaltyBasis, PenaltyParty,
   DiscountType, VariationReason, PaymentStageStatus,
 } from "@prisma/client";
 
@@ -350,6 +350,8 @@ export async function addPenaltyRule(contractId: string, fd: FormData) {
     data: {
       contractId,
       type: str(fd, "type") as PenaltyType,
+      label: str(fd, "label") || null,
+      party: str(fd, "party") as PenaltyParty,
       basis: str(fd, "basis") as PenaltyBasis,
       rate: Number(str(fd, "rate")),
       capPct: str(fd, "capPct") ? Number(str(fd, "capPct")) : null,
@@ -357,6 +359,30 @@ export async function addPenaltyRule(contractId: string, fd: FormData) {
     },
   });
   revalidatePath(`/contracts/${contractId}`);
+}
+
+/** Sửa 1 điều khoản phạt đã tạo — cho phép đổi mọi field, kể cả sau khi đã chọn preset ban đầu */
+export async function updatePenaltyRule(ruleId: string, fd: FormData) {
+  await requireUser();
+  const rule = await prisma.penaltyRule.update({
+    where: { id: ruleId },
+    data: {
+      type: str(fd, "type") as PenaltyType,
+      label: str(fd, "label") || null,
+      party: str(fd, "party") as PenaltyParty,
+      basis: str(fd, "basis") as PenaltyBasis,
+      rate: Number(str(fd, "rate")),
+      capPct: str(fd, "capPct") ? Number(str(fd, "capPct")) : null,
+      graceDays: Number(str(fd, "graceDays") || 0),
+    },
+  });
+  revalidatePath(`/contracts/${rule.contractId}`);
+}
+
+export async function deletePenaltyRule(ruleId: string) {
+  await requireUser();
+  const rule = await prisma.penaltyRule.delete({ where: { id: ruleId } });
+  revalidatePath(`/contracts/${rule.contractId}`);
 }
 
 export async function recordPenaltyEvent(contractId: string, fd: FormData) {
@@ -387,6 +413,9 @@ export async function recordPenaltyEvent(contractId: string, fd: FormData) {
       break;
     case "FIXED_PER_DAY":
       computed = Number(rule.rate) * days;
+      break;
+    case "FIXED_ONE_TIME":
+      computed = Number(rule.rate);
       break;
   }
   if (rule.capPct) computed = Math.min(computed, (contractValue * Number(rule.capPct)) / 100);

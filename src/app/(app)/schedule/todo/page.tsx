@@ -9,14 +9,15 @@ import { TodoList } from "./TodoList";
 export const dynamic = "force-dynamic";
 
 export default async function TodoPage() {
-  await requireUser();
+  const user = await requireUser();
+  const myEmail = user.email ?? "";
   const project = await getDefaultProject();
   if (!project) {
     return <Card><EmptyState title="Chưa có dự án" sub="Tạo dự án ở trang Hợp đồng trước" /></Card>;
   }
 
   const [items, stakeholders, contracts] = await Promise.all([
-    getTodoItems(project.id),
+    getTodoItems(project.id, myEmail),
     prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
     prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } } }),
   ]);
@@ -32,20 +33,22 @@ export default async function TodoPage() {
     ]),
   ).sort((a, b) => a.localeCompare(b));
 
+  const pendingCount = items.filter((it) => !it.isDone).length;
+
   return (
     <div className="space-y-3">
       <ScheduleTabs />
       <header className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">☑️ Việc cần làm</h1>
         <span className="text-ink-2 text-[13px]">
-          Gộp từ Nhật ký, WBS tiến độ, Checklist mốc nghiệm thu, và Hoạt động giảm thiểu rủi ro — {items.length} việc chưa xong
+          Gộp từ Nhật ký, WBS tiến độ, Checklist mốc nghiệm thu, Rủi ro, Issue Log và Bảo hành — {pendingCount} việc chưa xong
         </span>
       </header>
 
       {items.length === 0 ? (
-        <Card><EmptyState title="Không còn việc nào chưa xong 🎉" sub="Mọi checklist, WBS, rủi ro đều đã hoàn thành" /></Card>
+        <Card><EmptyState title="Chưa có việc nào được ghi nhận" sub="Mọi checklist, WBS, rủi ro sẽ tự gộp về đây" /></Card>
       ) : (
-        <TodoList items={items} picOptions={picOptions} />
+        <TodoList items={items} picOptions={picOptions} myEmail={myEmail} />
       )}
     </div>
   );

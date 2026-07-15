@@ -10,13 +10,13 @@ import { Button, Field, Input, Select, Textarea, Tag } from "@/components/ui";
 import { BankNameInput } from "@/components/BankNameInput";
 import { fmtDate, fmtVND } from "@/lib/format";
 import {
-  VENDOR_TYPE, PENALTY_TYPE, PENALTY_BASIS, DISCOUNT_TYPE, VARIATION_REASON, DOC_TYPE, PAYMENT_STATUS,
+  VENDOR_TYPE, PENALTY_TYPE, PENALTY_PARTY, PENALTY_BASIS, DISCOUNT_TYPE, VARIATION_REASON, DOC_TYPE, PAYMENT_STATUS,
   CONTRACT_STATUS,
 } from "@/lib/labels";
 import {
   createProject, createVendor, updateVendor, deleteVendor, createContract, updateContract, deleteContract,
   addPaymentStage, updatePaymentStage, deletePaymentStage, addPaymentTransaction, deletePaymentTransaction,
-  addPenaltyRule, recordPenaltyEvent, addDiscount, createVariation, decideVariation,
+  addPenaltyRule, updatePenaltyRule, deletePenaltyRule, recordPenaltyEvent, addDiscount, createVariation, decideVariation,
 } from "./actions";
 import { uploadDocument, type UploadState } from "../documents/actions";
 
@@ -829,46 +829,159 @@ export function PaymentTransactionList({
   );
 }
 
-/* Preset các điều khoản phạt phổ biến trong HĐ xây nhà VN */
+/* Preset các điều khoản phạt phổ biến trong HĐ xây nhà VN — chọn nhanh để điền sẵn, sau đó SỬA
+   TỰ DO mọi field bên dưới (kể cả Loại phạt/Cách tính, trước đây bị khoá cứng theo preset). Có
+   thêm lựa chọn "Tùy chỉnh..." để nhập hẳn 1 điều khoản không nằm trong 5 loại chuẩn. */
 const PENALTY_PRESETS = [
-  { label: "Thầu trễ tiến độ — 0,05%/ngày, trần 8%", type: "CONTRACTOR_LATE_PROGRESS", basis: "PCT_OF_CONTRACT_PER_DAY", rate: "0.05", capPct: "8" },
-  { label: "CĐT chậm thanh toán — 0,5%/ngày", type: "OWNER_LATE_PAYMENT", basis: "PCT_OF_CONTRACT_PER_DAY", rate: "0.5", capPct: "8" },
-  { label: "Hủy ngang hợp đồng — 8% giá trị HĐ", type: "TERMINATION", basis: "PCT_OF_CONTRACT", rate: "8", capPct: "" },
-  { label: "Vật tư giả/sai xuất xứ — 8% giá trị vật tư", type: "FAKE_MATERIAL", basis: "PCT_OF_ITEM_VALUE", rate: "8", capPct: "" },
-  { label: "CĐT gây chờ việc — 4.000.000₫/ngày", type: "OWNER_IDLE_WAIT", basis: "FIXED_PER_DAY", rate: "4000000", capPct: "" },
+  { label: "Thầu trễ tiến độ — 0,05%/ngày, trần 8%", type: "CONTRACTOR_LATE_PROGRESS", party: "CONTRACTOR", basis: "PCT_OF_CONTRACT_PER_DAY", rate: "0.05", capPct: "8" },
+  { label: "CĐT chậm thanh toán — 0,5%/ngày", type: "OWNER_LATE_PAYMENT", party: "OWNER", basis: "PCT_OF_CONTRACT_PER_DAY", rate: "0.5", capPct: "8" },
+  { label: "Hủy ngang hợp đồng — 8% giá trị HĐ", type: "TERMINATION", party: "EITHER", basis: "PCT_OF_CONTRACT", rate: "8", capPct: "" },
+  { label: "Vật tư giả/sai xuất xứ — 8% giá trị vật tư", type: "FAKE_MATERIAL", party: "CONTRACTOR", basis: "PCT_OF_ITEM_VALUE", rate: "8", capPct: "" },
+  { label: "CĐT gây chờ việc — 4.000.000₫/ngày", type: "OWNER_IDLE_WAIT", party: "OWNER", basis: "FIXED_PER_DAY", rate: "4000000", capPct: "" },
+  { label: "✏️ Tùy chỉnh — tự nhập điều khoản khác", type: "CUSTOM", party: "CONTRACTOR", basis: "PCT_OF_CONTRACT_PER_DAY", rate: "", capPct: "" },
 ];
 
+/** Field dùng chung cho form Thêm/Sửa — mọi field đều sửa tự do, không còn khoá theo preset nữa */
+function PenaltyRuleFields({
+  type, setType, customLabel, setCustomLabel, party, setParty, basis, setBasis, rate, setRate, capPct, setCapPct, graceDays,
+}: {
+  type: string; setType: (v: string) => void;
+  customLabel: string; setCustomLabel: (v: string) => void;
+  party: string; setParty: (v: string) => void;
+  basis: string; setBasis: (v: string) => void;
+  rate: string; setRate: (v: string) => void;
+  capPct: string; setCapPct: (v: string) => void;
+  graceDays: string;
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+        <Field label="Loại phạt">
+          <Select name="type" value={type} onChange={(e) => setType(e.target.value)}>{opts(PENALTY_TYPE)}</Select>
+        </Field>
+        <Field label="Bên chịu phạt">
+          <Select name="party" value={party} onChange={(e) => setParty(e.target.value)}>{opts(PENALTY_PARTY)}</Select>
+        </Field>
+      </div>
+      {type === "CUSTOM" && (
+        <Field label="Tên điều khoản *">
+          <Input
+            name="label"
+            required
+            value={customLabel}
+            onChange={(e) => setCustomLabel(e.target.value)}
+            placeholder="VD: Phạt chậm khắc phục bảo hành"
+          />
+        </Field>
+      )}
+      <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+        <Field label="Cách tính">
+          <Select name="basis" value={basis} onChange={(e) => setBasis(e.target.value)}>{opts(PENALTY_BASIS)}</Select>
+        </Field>
+        <Field label="Mức phạt">
+          <Input name="rate" value={rate} onChange={(e) => setRate(e.target.value)} required />
+        </Field>
+        <Field label="Trần phạt (%)">
+          <Input name="capPct" value={capPct} onChange={(e) => setCapPct(e.target.value)} placeholder="8" />
+        </Field>
+      </div>
+      <Field label="Số ngày ân hạn"><Input name="graceDays" type="number" defaultValue={graceDays} /></Field>
+    </>
+  );
+}
+
 export function AddPenaltyRuleForm({ contractId }: { contractId: string }) {
-  const [preset, setPreset] = useState(PENALTY_PRESETS[0]);
+  const [type, setType] = useState(PENALTY_PRESETS[0].type);
+  const [customLabel, setCustomLabel] = useState("");
+  const [party, setParty] = useState(PENALTY_PRESETS[0].party);
+  const [basis, setBasis] = useState(PENALTY_PRESETS[0].basis);
+  const [rate, setRate] = useState(PENALTY_PRESETS[0].rate);
+  const [capPct, setCapPct] = useState(PENALTY_PRESETS[0].capPct);
+
+  const applyPreset = (p: (typeof PENALTY_PRESETS)[number]) => {
+    setType(p.type);
+    setParty(p.party);
+    setBasis(p.basis);
+    setRate(p.rate);
+    setCapPct(p.capPct);
+    if (p.type !== "CUSTOM") setCustomLabel("");
+  };
+
   return (
     <ModalButton label="+ Điều khoản phạt" title="Thêm điều khoản phạt" variant="default">
       {(close) => (
-        <form action={async (fd) => { await addPenaltyRule(contractId, fd); close(); }} className="space-y-3">
-          <Field label="Chọn nhanh điều khoản phổ biến">
-            <Select
-              value={PENALTY_PRESETS.indexOf(preset)}
-              onChange={(e) => setPreset(PENALTY_PRESETS[Number(e.target.value)])}
-            >
+        <form
+          action={async (fd) => { await addPenaltyRule(contractId, fd); close(); }}
+          className="space-y-3"
+        >
+          <Field label="Chọn nhanh điều khoản phổ biến (điền sẵn, vẫn sửa tự do được bên dưới)">
+            <Select onChange={(e) => applyPreset(PENALTY_PRESETS[Number(e.target.value)])} defaultValue="">
+              <option value="" disabled>— Chọn để điền nhanh —</option>
               {PENALTY_PRESETS.map((p, i) => (
                 <option key={i} value={i}>{p.label}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Loại phạt">
-            <Select name="type" value={preset.type} onChange={() => {}}>{opts(PENALTY_TYPE)}</Select>
-          </Field>
-          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
-            <Field label="Cách tính">
-              <Select name="basis" value={preset.basis} onChange={() => {}}>{opts(PENALTY_BASIS)}</Select>
-            </Field>
-            <Field label="Mức phạt"><Input name="rate" defaultValue={preset.rate} key={`r${preset.rate}`} required /></Field>
-            <Field label="Trần phạt (%)"><Input name="capPct" defaultValue={preset.capPct} key={`c${preset.capPct}`} placeholder="8" /></Field>
-          </div>
-          <Field label="Số ngày ân hạn"><Input name="graceDays" type="number" defaultValue="0" /></Field>
+          <PenaltyRuleFields
+            type={type} setType={setType}
+            customLabel={customLabel} setCustomLabel={setCustomLabel}
+            party={party} setParty={setParty}
+            basis={basis} setBasis={setBasis}
+            rate={rate} setRate={setRate}
+            capPct={capPct} setCapPct={setCapPct}
+            graceDays="0"
+          />
           <SubmitRow />
         </form>
       )}
     </ModalButton>
+  );
+}
+
+export function EditPenaltyRuleForm({
+  rule,
+}: {
+  rule: { id: string; type: string; label: string | null; party: string; basis: string; rate: number; capPct: number | null; graceDays: number };
+}) {
+  const [type, setType] = useState(rule.type);
+  const [customLabel, setCustomLabel] = useState(rule.label ?? "");
+  const [party, setParty] = useState(rule.party);
+  const [basis, setBasis] = useState(rule.basis);
+  const [rate, setRate] = useState(String(rule.rate));
+  const [capPct, setCapPct] = useState(rule.capPct != null ? String(rule.capPct) : "");
+
+  return (
+    <ModalButton label="Sửa" title="Sửa điều khoản phạt" variant="default">
+      {(close) => (
+        <form
+          action={async (fd) => { await updatePenaltyRule(rule.id, fd); close(); }}
+          className="space-y-3"
+        >
+          <PenaltyRuleFields
+            type={type} setType={setType}
+            customLabel={customLabel} setCustomLabel={setCustomLabel}
+            party={party} setParty={setParty}
+            basis={basis} setBasis={setBasis}
+            rate={rate} setRate={setRate}
+            capPct={capPct} setCapPct={setCapPct}
+            graceDays={String(rule.graceDays)}
+          />
+          <SubmitRow />
+        </form>
+      )}
+    </ModalButton>
+  );
+}
+
+export function DeletePenaltyRuleButton({ id, label }: { id: string; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => { if (confirm(`Xóa điều khoản phạt "${label}"?`)) void deletePenaltyRule(id); }}
+      className="text-critical text-xs font-semibold hover:underline"
+    >
+      Xóa
+    </button>
   );
 }
 

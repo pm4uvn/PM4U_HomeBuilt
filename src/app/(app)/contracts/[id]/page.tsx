@@ -11,14 +11,19 @@ import { Card, Tag, StatusPill, EmptyState } from "@/components/ui";
 import { PreviewButton } from "@/components/FilePreview";
 import { fmtVND, fmtDate } from "@/lib/format";
 import {
-  VENDOR_TYPE, CONTRACT_STATUS, PAYMENT_STATUS, PENALTY_TYPE, PENALTY_BASIS,
+  VENDOR_TYPE, CONTRACT_STATUS, PAYMENT_STATUS, PENALTY_TYPE, PENALTY_PARTY, PENALTY_BASIS,
   DISCOUNT_TYPE, VARIATION_REASON, VARIATION_STATUS, MILESTONE_STATUS, DOC_TYPE,
 } from "@/lib/labels";
 import {
   AddStageForm, EditStageForm, AddPaymentForm, PaymentTransactionList,
-  AddPenaltyRuleForm, RecordPenaltyEventForm,
+  AddPenaltyRuleForm, EditPenaltyRuleForm, DeletePenaltyRuleButton, RecordPenaltyEventForm,
   AddDiscountForm, CreateVariationForm, VariationDecision, UploadContractFileForm, EditContractForm,
 } from "../forms";
+
+/** Tên hiển thị điều khoản phạt — CUSTOM dùng label tự đặt, các loại chuẩn dùng tên có sẵn */
+const penaltyRuleName = (r: { type: string; label: string | null }) => (r.type === "CUSTOM" ? r.label || "Tùy chỉnh" : PENALTY_TYPE[r.type]);
+/** basis tính bằng VND cố định (không phải %) — gồm cả theo ngày lẫn 1 lần duy nhất */
+const isFixedAmount = (basis: string) => basis === "FIXED_PER_DAY" || basis === "FIXED_ONE_TIME";
 
 export const dynamic = "force-dynamic";
 
@@ -358,7 +363,7 @@ export default async function ContractDetailPage({
                 contractId={id}
                 rules={contract.penaltyRules.map((r) => ({
                   id: r.id,
-                  label: `${PENALTY_TYPE[r.type]} — ${Number(r.rate)}${r.basis === "FIXED_PER_DAY" ? "₫" : "%"}${r.basis.includes("PER_DAY") ? "/ngày" : ""}`,
+                  label: `${penaltyRuleName(r)} — ${isFixedAmount(r.basis) ? fmtVND(Number(r.rate)) : `${Number(r.rate)}%`}${r.basis.includes("PER_DAY") ? "/ngày" : ""}`,
                 }))}
               />
             )}
@@ -368,12 +373,24 @@ export default async function ContractDetailPage({
           ) : (
             <ul className="text-[13px] space-y-1.5">
               {contract.penaltyRules.map((r) => (
-                <li key={r.id} className="flex justify-between gap-2">
-                  <span>{PENALTY_TYPE[r.type]}</span>
-                  <span className="text-ink-2 money">
-                    {r.basis === "FIXED_PER_DAY" ? fmtVND(Number(r.rate)) : `${Number(r.rate)}%`}
+                <li key={r.id} className="flex justify-between gap-2 items-center">
+                  <span className="flex items-center gap-1.5">
+                    <Tag sev={r.party === "OWNER" ? "warning" : "neutral"}>
+                      {PENALTY_PARTY[r.party]}
+                    </Tag>
+                    {penaltyRuleName(r)}
+                  </span>
+                  <span className="text-ink-2 money flex items-center gap-2">
+                    {isFixedAmount(r.basis) ? fmtVND(Number(r.rate)) : `${Number(r.rate)}%`}
                     {r.basis.includes("PER_DAY") && "/ngày"}
                     {r.capPct && ` (trần ${Number(r.capPct)}%)`}
+                    <EditPenaltyRuleForm
+                      rule={{
+                        id: r.id, type: r.type, label: r.label, party: r.party, basis: r.basis,
+                        rate: Number(r.rate), capPct: r.capPct != null ? Number(r.capPct) : null, graceDays: r.graceDays,
+                      }}
+                    />
+                    <DeletePenaltyRuleButton id={r.id} label={penaltyRuleName(r)} />
                   </span>
                 </li>
               ))}
@@ -386,7 +403,7 @@ export default async function ContractDetailPage({
                 {contract.penaltyEvents.map((e) => (
                   <li key={e.id} className="flex justify-between gap-2">
                     <span>
-                      {PENALTY_TYPE[e.rule.type]}{" "}
+                      {penaltyRuleName(e.rule)}{" "}
                       <span className="text-muted">({fmtDate(e.startDate)}{e.endDate ? ` → ${fmtDate(e.endDate)}` : " → đang chạy"})</span>
                     </span>
                     <span className="font-bold money" style={{ color: "var(--critical)" }}>

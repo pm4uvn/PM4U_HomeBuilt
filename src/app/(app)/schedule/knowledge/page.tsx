@@ -13,13 +13,14 @@ export default async function KnowledgePage() {
     <div className="space-y-3">
       <ScheduleTabs />
       <header className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-xl font-bold">📚 Kiến thức khởi công & nền móng</h1>
+        <h1 className="text-xl font-bold">📚 Kiến thức xây dựng</h1>
       </header>
 
       <Card>
         <p className="text-[13px] text-ink-2">
-          Tài liệu tra cứu nhanh về {KNOWLEDGE_BASE.length} chủ đề trọng yếu trong giai đoạn khởi công và thi công nền
-          móng — đúc kết theo kinh nghiệm quản lý dự án xây dựng nhà ở dân dụng thực tế.
+          Tài liệu tra cứu nhanh về {KNOWLEDGE_BASE.length} chủ đề trọng yếu — từ khởi công, nền móng đến xây dựng
+          phần thô (khung BTCT, chống thấm, MEP âm, tô trát...) — đúc kết theo kinh nghiệm quản lý dự án xây dựng
+          nhà ở dân dụng thực tế.
         </p>
       </Card>
 

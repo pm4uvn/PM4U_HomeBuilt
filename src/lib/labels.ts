@@ -30,6 +30,13 @@ export const PENALTY_TYPE: Record<string, string> = {
   TERMINATION: "Hủy ngang hợp đồng",
   FAKE_MATERIAL: "Vật tư giả/sai xuất xứ",
   OWNER_IDLE_WAIT: "CĐT gây chờ việc",
+  CUSTOM: "Tùy chỉnh",
+};
+
+export const PENALTY_PARTY: Record<string, string> = {
+  CONTRACTOR: "Nhà thầu",
+  OWNER: "Chủ đầu tư",
+  EITHER: "Cả 2 bên",
 };
 
 export const PENALTY_BASIS: Record<string, string> = {
@@ -37,6 +44,7 @@ export const PENALTY_BASIS: Record<string, string> = {
   PCT_OF_CONTRACT: "% giá trị HĐ",
   PCT_OF_ITEM_VALUE: "% giá trị vật tư",
   FIXED_PER_DAY: "VND / ngày",
+  FIXED_ONE_TIME: "VND (1 lần)",
 };
 
 export const DISCOUNT_TYPE: Record<string, string> = {
