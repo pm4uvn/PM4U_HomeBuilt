@@ -15,6 +15,9 @@ import {
   resetSchedule, requestInspectionAction, recordInspectionAction, createDailyLog,
   updateDailyLog, deleteDailyLog, toggleDailyLogItem,
   uploadDailyLogPhotos, deleteDailyLogPhoto, type UploadPhotosState,
+  uploadMilestoneTaskPhotos, deleteMilestoneTaskPhoto,
+  uploadMilestonePhotos, deleteMilestonePhoto,
+  uploadDailyLogVoiceNote, uploadMilestoneVoiceNote, uploadMilestoneTaskVoiceNote,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
   toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask, updateMilestoneTaskFields,
 } from "./actions";
@@ -933,6 +936,237 @@ export function DailyLogPhotos({
   );
 }
 
+/** Ảnh công trường gắn vào 1 công việc WBS — cùng cơ chế với DailyLogPhotos (nhật ký công trình) */
+export function MilestoneTaskPhotos({
+  taskId,
+  projectId,
+  photos,
+}: {
+  taskId: string;
+  projectId: string;
+  photos: DailyLogPhoto[];
+}) {
+  const [state, action, pending] = useActionState<UploadPhotosState, FormData>(
+    async (prev, fd) => uploadMilestoneTaskPhotos(taskId, projectId, prev, fd),
+    {},
+  );
+  const formRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-1">
+      {photos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {photos.map((p) => (
+            <div key={p.id} className="relative group shrink-0">
+              <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
+              </PreviewButton>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Xóa ảnh "${p.title}"?`)) deleteMilestoneTaskPhoto(p.id);
+                }}
+                className="absolute -top-1.5 -right-1.5 bg-critical text-white rounded-full w-4 h-4 text-[10px] leading-4 opacity-0 group-hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form ref={formRef} action={action}>
+        <input
+          ref={inputRef}
+          type="file"
+          name="files"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={() => formRef.current?.requestSubmit()}
+        />
+        <Button
+          type="button"
+          variant="default"
+          className="!py-1 !px-2 text-xs"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+        >
+          {pending ? "Đang tải..." : "+ Ảnh"}
+        </Button>
+      </form>
+      {state.error && <p className="text-critical text-xs mt-1">{state.error}</p>}
+    </div>
+  );
+}
+
+/** Ảnh công trường gắn thẳng vào 1 mốc nghiệm thu — dùng cho mốc chưa có WBS con nào để gắn ảnh vào */
+export function MilestonePhotos({
+  milestoneId,
+  projectId,
+  photos,
+}: {
+  milestoneId: string;
+  projectId: string;
+  photos: DailyLogPhoto[];
+}) {
+  const [state, action, pending] = useActionState<UploadPhotosState, FormData>(
+    async (prev, fd) => uploadMilestonePhotos(milestoneId, projectId, prev, fd),
+    {},
+  );
+  const formRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-1.5">
+      {photos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {photos.map((p) => (
+            <div key={p.id} className="relative group shrink-0">
+              <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
+              </PreviewButton>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Xóa ảnh "${p.title}"?`)) deleteMilestonePhoto(p.id);
+                }}
+                className="absolute -top-1.5 -right-1.5 bg-critical text-white rounded-full w-4 h-4 text-[10px] leading-4 opacity-0 group-hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form ref={formRef} action={action}>
+        <input
+          ref={inputRef}
+          type="file"
+          name="files"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={() => formRef.current?.requestSubmit()}
+        />
+        <Button
+          type="button"
+          variant="default"
+          className="!py-1 !px-2 text-xs"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+        >
+          {pending ? "Đang tải..." : `📷 Ảnh công trường${photos.length > 0 ? ` (${photos.length})` : ""}`}
+        </Button>
+      </form>
+      {state.error && <p className="text-critical text-xs mt-1">{state.error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Ghi âm giọng nói qua mic trình duyệt (MediaRecorder) — dùng chung cho cả 3 nơi (nhật ký/mốc/công
+ * việc WBS), chỉ khác `uploadAction` được bind sẵn id + projectId ở nơi gọi. Xóa dùng lại luôn
+ * delete*Photo tương ứng vì đều xóa theo Document.id, không phân biệt ảnh hay ghi âm.
+ */
+export function VoiceNotes({
+  notes,
+  entityId,
+  projectId,
+  uploadAction,
+  onDelete,
+}: {
+  notes: DailyLogPhoto[];
+  entityId: string;
+  projectId: string;
+  /**
+   * Truyền thẳng server action gốc (VD uploadDailyLogVoiceNote), KHÔNG bind sẵn tham số ở nơi gọi —
+   * closure bind sẵn tạo ở Server Component (page.tsx) không serialize được qua boundary Client
+   * Component ("Functions cannot be passed directly..."). Bind ở đây (trong Client Component) thì
+   * an toàn vì không phải vượt boundary nữa.
+   */
+  uploadAction: (entityId: string, projectId: string, prev: UploadPhotosState, fd: FormData) => Promise<UploadPhotosState>;
+  onDelete: (id: string) => void;
+}) {
+  const [state, action, pending] = useActionState<UploadPhotosState, FormData>(
+    (prev, fd) => uploadAction(entityId, projectId, prev, fd),
+    {},
+  );
+  const [, startTransition] = useTransition();
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        const file = new File([blob], `ghi-am-${Date.now()}.webm`, { type: blob.type });
+        const fd = new FormData();
+        fd.append("files", file);
+        startTransition(() => { action(fd); });
+      };
+      mediaRecorderRef.current = mr;
+      mr.start();
+      setRecording(true);
+      setSeconds(0);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch {
+      alert("Không truy cập được microphone — kiểm tra quyền trình duyệt đã cho phép chưa");
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+  }
+
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+
+  return (
+    <div className="mt-1.5">
+      {notes.length > 0 && (
+        <div className="space-y-1 mb-1.5">
+          {notes.map((n) => (
+            <div key={n.id} className="flex items-center gap-2 group">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <audio controls src={n.url} className="h-8" style={{ maxWidth: 240 }} />
+              <button
+                type="button"
+                onClick={() => { if (confirm(`Xóa bản ghi âm "${n.title}"?`)) onDelete(n.id); }}
+                className="text-critical text-xs opacity-0 group-hover:opacity-100"
+              >
+                Xóa
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <Button
+        type="button"
+        variant={recording ? "danger" : "default"}
+        className="!py-1 !px-2 text-xs"
+        disabled={pending}
+        onClick={recording ? stopRecording : startRecording}
+      >
+        {recording ? `⏹ Dừng (${mm}:${ss})` : pending ? "Đang tải..." : "🎙️ Ghi âm"}
+      </Button>
+      {state.error && <p className="text-critical text-xs mt-1">{state.error}</p>}
+    </div>
+  );
+}
+
 export function DeleteDailyLogButton({ id, logDate }: { id: string; logDate: string }) {
   return (
     <button
@@ -1074,6 +1308,8 @@ export type MilestoneTaskRow = {
   isDone: boolean;
   dueDate: string | null;
   percentComplete: number;
+  photos?: DailyLogPhoto[];
+  voiceNotes?: DailyLogPhoto[];
 };
 
 const WBS_EDIT_INPUT = "!py-0.5 text-[11px] border border-line rounded px-1 bg-page outline-none focus:border-brand";
@@ -1090,15 +1326,19 @@ const isSaneDate = (iso: string) => {
  * mỗi khi dữ liệu đổi (kể cả đổi từ tab Gantt chi tiết) — tránh state cục bộ bị "đứng hình" theo giá trị cũ,
  * đảm bảo DB luôn là nguồn dữ liệu duy nhất hiển thị ra, khớp giữa Detail Plan và Gantt chi tiết.
  */
-function WbsTaskEditRow({ t, picListId }: { t: MilestoneTaskRow; picListId: string }) {
+function WbsTaskEditRow({ t, picListId, projectId }: { t: MilestoneTaskRow; picListId: string; projectId: string }) {
   const [, startTransition] = useTransition();
   const [due, setDue] = useState(t.dueDate ? t.dueDate.slice(0, 10) : "");
   const [pic, setPic] = useState(t.responsible ?? "");
+  const [picTouched, setPicTouched] = useState(false);
   const [pct, setPct] = useState(t.percentComplete);
+  const [showPhotos, setShowPhotos] = useState(false);
   const isDone = pct >= 100;
   const isLate = !isDone && !!due && new Date(due).getTime() < Date.now();
+  const photoCount = (t.photos?.length ?? 0) + (t.voiceNotes?.length ?? 0);
 
   return (
+    <div>
     <div className="flex items-center gap-2 text-[13px] group flex-wrap">
       <input
         type="checkbox"
@@ -1131,8 +1371,10 @@ function WbsTaskEditRow({ t, picListId }: { t: MilestoneTaskRow; picListId: stri
         value={pic}
         placeholder="PIC..."
         title="Người/đơn vị phụ trách"
-        onChange={(e) => setPic(e.target.value)}
+        onFocus={() => { setPic(""); setPicTouched(false); }} // xóa tạm để datalist hiện đủ danh sách thay vì lọc theo tên đang có sẵn
+        onChange={(e) => { setPic(e.target.value); setPicTouched(true); }}
         onBlur={() => {
+          if (!picTouched) { setPic(t.responsible ?? ""); return; } // chỉ bấm vào rồi bấm ra, chưa chọn/gõ gì -> khôi phục, không lưu rỗng
           if (pic !== (t.responsible ?? "")) startTransition(() => { void updateMilestoneTaskFields(t.id, { responsible: pic }); });
         }}
       />
@@ -1154,17 +1396,42 @@ function WbsTaskEditRow({ t, picListId }: { t: MilestoneTaskRow; picListId: stri
       </span>
       <button
         type="button"
+        onClick={() => setShowPhotos((s) => !s)}
+        className="text-[11px] text-ink-2 hover:text-brand whitespace-nowrap"
+        title="Ảnh & ghi âm công trường"
+      >
+        📷🎙️{photoCount > 0 ? ` ${photoCount}` : ""}
+      </button>
+      <button
+        type="button"
         onClick={() => deleteMilestoneTask(t.id)}
         className="text-critical text-xs opacity-0 group-hover:opacity-100 ml-auto"
       >
         Xóa
       </button>
     </div>
+    {showPhotos && (
+      <div className="pl-6 mt-1 flex flex-wrap gap-3 items-start">
+        <MilestoneTaskPhotos taskId={t.id} projectId={projectId} photos={t.photos ?? []} />
+        <VoiceNotes
+          notes={t.voiceNotes ?? []}
+          entityId={t.id}
+          projectId={projectId}
+          uploadAction={uploadMilestoneTaskVoiceNote}
+          onDelete={deleteMilestoneTaskPhoto}
+        />
+      </div>
+    )}
+    </div>
   );
 }
 
 /** WBS cấp 4: danh sách công việc con của 1 milestone, kèm Hạn/PIC/% sửa trực tiếp (đồng nhất với Gantt chi tiết) */
-export function WbsTaskPanel({ milestoneId, tasks, picOptions = [] }: { milestoneId: string; tasks: MilestoneTaskRow[]; picOptions?: string[] }) {
+export function WbsTaskPanel({
+  milestoneId, tasks, picOptions = [], projectId,
+}: {
+  milestoneId: string; tasks: MilestoneTaskRow[]; picOptions?: string[]; projectId: string;
+}) {
   const [adding, setAdding] = useState(false);
   const doneCount = tasks.filter((t) => t.isDone).length;
   const totalDays = tasks.reduce((s, t) => s + t.durationDays, 0);
@@ -1183,7 +1450,7 @@ export function WbsTaskPanel({ milestoneId, tasks, picOptions = [] }: { mileston
       )}
       <div className="space-y-1">
         {tasks.map((t) => (
-          <WbsTaskEditRow key={`${t.id}-${t.dueDate}-${t.responsible}-${t.percentComplete}`} t={t} picListId={picListId} />
+          <WbsTaskEditRow key={`${t.id}-${t.dueDate}-${t.responsible}-${t.percentComplete}`} t={t} picListId={picListId} projectId={projectId} />
         ))}
       </div>
       {adding ? (
@@ -1232,6 +1499,8 @@ export type MilestoneRowData = {
   lastInspection: { result: string; method: string; confirmedAt: string; notes: string | null } | null;
   checklistItems: { id: string; label: string; isChecked: boolean }[];
   tasks: MilestoneTaskRow[];
+  photos?: DailyLogPhoto[];
+  voiceNotes?: DailyLogPhoto[];
 };
 
 /**
@@ -1243,11 +1512,13 @@ export function MilestoneRow({
   now,
   templates,
   picOptions = [],
+  projectId,
 }: {
   m: MilestoneRowData;
   now: number;
   templates: { category: string; items: string[] }[];
   picOptions?: string[];
+  projectId: string;
 }) {
   const [open, setOpen] = useState(false);
   const plannedDate = m.plannedDate ? new Date(m.plannedDate) : null;
@@ -1308,7 +1579,17 @@ export function MilestoneRow({
       </div>
       {open && (
         <>
-          <WbsTaskPanel milestoneId={m.id} tasks={m.tasks} picOptions={picOptions} />
+          <div className="flex flex-wrap gap-3 items-start">
+            <MilestonePhotos milestoneId={m.id} projectId={projectId} photos={m.photos ?? []} />
+            <VoiceNotes
+              notes={m.voiceNotes ?? []}
+              entityId={m.id}
+              projectId={projectId}
+              uploadAction={uploadMilestoneVoiceNote}
+              onDelete={deleteMilestonePhoto}
+            />
+          </div>
+          <WbsTaskPanel milestoneId={m.id} tasks={m.tasks} picOptions={picOptions} projectId={projectId} />
           <ChecklistPanel milestoneId={m.id} milestoneName={m.name} items={m.checklistItems} templates={templates} />
         </>
       )}
@@ -1334,11 +1615,13 @@ export function PhaseCard({
   now,
   templates,
   picOptions = [],
+  projectId,
 }: {
   phase: PhaseCardData;
   now: number;
   templates: { category: string; items: string[] }[];
   picOptions?: string[];
+  projectId: string;
 }) {
   const isDone = phase.progressPct >= 100;
   const [open, setOpen] = useState(!isDone);
@@ -1391,7 +1674,7 @@ export function PhaseCard({
       {open && sortedMilestones.length > 0 && (
         <div className="space-y-2">
           {sortedMilestones.map((m) => (
-            <MilestoneRow key={m.id} m={m} now={now} templates={templates} picOptions={picOptions} />
+            <MilestoneRow key={m.id} m={m} now={now} templates={templates} picOptions={picOptions} projectId={projectId} />
           ))}
         </div>
       )}

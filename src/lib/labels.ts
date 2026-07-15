@@ -213,6 +213,32 @@ export const ISSUE_STATUS: Record<string, string> = {
   CLOSED: "Đã đóng",
 };
 
+export const DEFECT_CATEGORY: Record<string, string> = {
+  WATERPROOFING: "Chống thấm",
+  ELECTRICAL_MEP: "Điện nước",
+  FINISHING: "Hoàn thiện",
+  STRUCTURAL: "Kết cấu",
+  DOOR_WINDOW: "Cửa đi / cửa sổ",
+  PAINT_WALL: "Sơn / tường / trần",
+  FLOORING: "Sàn / ốp lát",
+  ROOFING: "Mái / sân thượng",
+  OTHER: "Khác",
+};
+
+export const DEFECT_SEVERITY: Record<string, string> = {
+  LOW: "Thấp",
+  MEDIUM: "Trung bình",
+  HIGH: "Cao",
+  CRITICAL: "Nghiêm trọng",
+};
+
+export const DEFECT_STATUS: Record<string, string> = {
+  OPEN: "Đang mở",
+  IN_PROGRESS: "Đang xử lý",
+  FIXED: "Đã sửa",
+  CLOSED: "Đã đóng",
+};
+
 export const IDLE_CAUSE: Record<string, string> = {
   SITE_NOT_CLEARED: "Chưa dọn mặt bằng",
   NEIGHBOR_COMPLAINT: "Hàng xóm khiếu nại",
@@ -275,6 +301,48 @@ export const VT_TRANG_THAI_CONG_VIEC: Record<string, string> = {
   tre_han: "Trễ hạn",
   tam_dung: "Tạm dừng",
   huy: "Hủy",
+};
+
+// ================ MODULE: THIẾT BỊ ĐIỆN TỬ THEO DỰ ÁN =========================
+export const TB_NGUOI_MUA: Record<string, string> = {
+  chu_dau_tu: "Chủ đầu tư mua",
+  nha_thau: "Nhà thầu mua",
+  chua_xac_dinh: "Chưa xác định",
+};
+
+export const TB_TRANG_THAI_CHON_MODEL: Record<string, string> = {
+  chua_chon: "Chưa chọn",
+  da_chon: "Đã chọn",
+};
+
+export const TB_TRANG_THAI_DAT_HANG: Record<string, string> = {
+  chua_dat: "Chưa đặt",
+  da_dat: "Đã đặt hàng",
+  da_mua: "Đã mua",
+};
+
+export const TB_TRANG_THAI_GIAO_HANG: Record<string, string> = {
+  chua_giao: "Chưa giao",
+  da_giao: "Đã giao",
+};
+
+export const TB_TRANG_THAI_LAP_DAT: Record<string, string> = {
+  chua_lap_dat: "Chưa lắp đặt",
+  dang_lap_dat: "Đang lắp đặt",
+  da_lap_dat: "Đã lắp đặt",
+  can_sua_loi: "Cần sửa lỗi",
+};
+
+export const TB_DO_TIN_CAY: Record<string, string> = {
+  cao: "Cao",
+  trung_binh: "Trung bình",
+  thap: "Thấp",
+};
+
+export const TB_TRANG_THAI: Record<string, string> = {
+  dang_su_dung: "Đang sử dụng",
+  ngung_ban: "Ngừng bán",
+  thay_the: "Đã thay thế",
 };
 
 export const DOC_TYPE: Record<string, string> = {

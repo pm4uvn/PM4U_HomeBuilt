@@ -71,6 +71,7 @@ export default async function ContractDetailPage({
     prisma.milestone.findMany({
       where: { phase: { projectId: contract.projectId } },
       orderBy: { phase: { sortOrder: "asc" } },
+      include: { phase: { select: { name: true } } },
     }),
     prisma.contract.findMany({
       where: { projectId: contract.projectId, id: { not: id } },
@@ -213,7 +214,7 @@ export default async function ContractDetailPage({
             vatRate={Number(contract.vatRate)}
             nextStageNo={contract.paymentStages.length + 1}
             existingPercentTotal={contract.paymentStages.reduce((s, p) => s + Number(p.percent), 0)}
-            milestones={milestones.map((m) => ({ id: m.id, name: m.name }))}
+            milestones={milestones.map((m) => ({ id: m.id, name: m.name, phaseName: m.phase.name }))}
           />
         </div>
         {contract.paymentStages.length === 0 ? (
@@ -315,7 +316,7 @@ export default async function ContractDetailPage({
                             otherStagesPercentTotal={contract.paymentStages
                               .filter((p) => p.id !== s.id)
                               .reduce((sum, p) => sum + Number(p.percent), 0)}
-                            milestones={milestones.map((m) => ({ id: m.id, name: m.name }))}
+                            milestones={milestones.map((m) => ({ id: m.id, name: m.name, phaseName: m.phase.name }))}
                             bankAccounts={bankAccounts.map((a) => ({
                               id: a.id, nickname: a.nickname, bankName: a.bankName, accountNumber: a.accountNumber,
                             }))}

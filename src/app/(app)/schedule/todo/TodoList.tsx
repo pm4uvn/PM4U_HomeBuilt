@@ -65,6 +65,7 @@ function TodoRow({
   const [isPending, startTransition] = useTransition();
   const [due, setDue] = useState(item.dueDate ? item.dueDate.slice(0, 10) : "");
   const [pic, setPic] = useState(item.pic ?? "");
+  const [picTouched, setPicTouched] = useState(false);
   const editable = isEditableSource(item.source);
   const isLate = !!due && due < new Date().toISOString().slice(0, 10);
   const picListId = `todo-pic-options`;
@@ -96,8 +97,10 @@ function TodoRow({
                   value={pic}
                   placeholder="PIC..."
                   className={`${EDIT_INPUT} !w-28`}
-                  onChange={(e) => setPic(e.target.value)}
+                  onFocus={() => { setPic(""); setPicTouched(false); }} // xóa tạm để datalist hiện đủ danh sách thay vì lọc theo tên đang có sẵn
+                  onChange={(e) => { setPic(e.target.value); setPicTouched(true); }}
                   onBlur={() => {
+                    if (!picTouched) { setPic(item.pic ?? ""); return; } // chỉ bấm vào rồi bấm ra, chưa chọn/gõ gì -> khôi phục, không lưu rỗng
                     if (pic !== (item.pic ?? "")) startTransition(() => { void updatePic(item, pic); });
                   }}
                 />

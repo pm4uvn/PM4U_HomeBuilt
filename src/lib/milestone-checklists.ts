@@ -212,6 +212,149 @@ const EXACT_CHECKLISTS: Record<string, string[]> = {
     "Có xác nhận của đơn vị thiết kế/thi công trên bản vẽ hoàn công",
     "Đã lưu trữ đầy đủ trong hồ sơ dự án",
   ],
+
+  // Khớp đúng tên các mốc theo "BẢNG TIẾN ĐỘ THI CÔNG" của nhà thầu Thiết Thạch (import 2026-07-13,
+  // scripts/import-thi-cong-schedule.mjs) — 3 giai đoạn I/II/III thay thế Ép cọc/Thô/Hoàn thiện cũ.
+  "1. Thi công ép cọc, tập kết vật tư, làm láng trại công nhân": [
+    "Vị trí ép cọc đúng theo bản vẽ định vị",
+    "Đã kiểm tra chất lượng, số lượng cọc trước khi ép",
+    "Có biên bản ép cọc, nhật ký ép từng cây",
+    "Vật tư tập kết đúng nơi quy định, có che chắn bảo quản",
+    "Láng trại công nhân đảm bảo vệ sinh, an toàn PCCC",
+  ],
+  "2. Đào đất": [
+    "Đúng kích thước, cao độ đáy hố móng theo bản vẽ",
+    "Có biện pháp chống sạt lở vách hố đào (nếu đất yếu)",
+    "Đã xử lý nước ngầm/nước mưa đọng đáy hố",
+    "Không phát hiện chướng ngại vật ngầm (ống nước, cáp điện cũ...)",
+    "Đất đào được vận chuyển đi đúng nơi quy định, không gây ô nhiễm",
+  ],
+  "3. Thi công cốp pha, cốt thép, đổ bê tông móng": [
+    "Cốp pha kín khít, đúng kích thước, cao độ đế móng",
+    "Đúng số lượng, đường kính, khoảng cách thép theo bản vẽ",
+    "Đã đặt lớp bê tông bảo vệ (con kê) đúng quy định",
+    "Đúng mác bê tông, có phiếu xuất xưởng/hóa đơn",
+    "Đã lấy mẫu nén thử (test cube)",
+    "Đầm bê tông kỹ, không rỗ tổ ong",
+    "Bảo dưỡng bê tông sau đổ (che phủ, tưới nước)",
+  ],
+  "1. Thi công sàn lầu 01": [
+    "Đúng số lượng, đường kính thép sàn/dầm/cột theo bản vẽ lên lầu 1",
+    "Cốp pha sàn kín khít, đúng cao độ, đủ khả năng chịu tải",
+    "Đã nghiệm thu cốt thép trước khi đổ bê tông",
+    "Đúng mác bê tông, có phiếu xuất xưởng, đã lấy mẫu nén thử",
+    "Đầm bê tông kỹ, không rỗ tổ ong, bảo dưỡng đúng quy trình",
+    "Tháo cốp pha đúng thời gian dưỡng hộ tối thiểu",
+  ],
+  "2. Thi công sàn lầu 02": [
+    "Đúng số lượng, đường kính thép sàn/dầm/cột lên lầu 2 theo bản vẽ",
+    "Cốp pha sàn kín khít, đúng cao độ",
+    "Đã nghiệm thu cốt thép trước khi đổ bê tông",
+    "Đúng mác bê tông, đã lấy mẫu nén thử",
+    "Đầm bê tông kỹ, bảo dưỡng đúng quy trình",
+  ],
+  "3. Thi công sàn sân thượng": [
+    "Đúng số lượng, đường kính thép sàn sân thượng theo bản vẽ",
+    "Cốp pha kín khít, đúng độ dốc thoát nước sân thượng",
+    "Đã nghiệm thu cốt thép trước khi đổ bê tông",
+    "Đúng mác bê tông, đã lấy mẫu nén thử",
+    "Đầm bê tông kỹ, bảo dưỡng đúng quy trình",
+    "Đã đặt sẵn ống chờ, phễu thu nước đúng vị trí",
+  ],
+  "4. Thi công sàn Mái": [
+    "Đúng số lượng, đường kính thép sàn mái theo bản vẽ",
+    "Cốp pha kín khít, đúng độ dốc thoát nước mái",
+    "Đã nghiệm thu cốt thép trước khi đổ bê tông",
+    "Đúng mác bê tông, đã lấy mẫu nén thử",
+    "Đã đặt sẵn ống thoát nước mái, lỗ kỹ thuật đúng vị trí",
+  ],
+  "1. Thi công tầng trệt": [
+    "Xây tường thẳng, vuông góc, đúng mạch vữa",
+    "Đúng chủng loại gạch, độ dày tường theo thiết kế",
+    "Tô trát phẳng, không nứt chân chim, đúng độ dày lớp tô",
+    "Đã xử lý điện nước âm tường trước khi tô (nếu có)",
+    "Đã che chắn bảo vệ sàn/khu vực xung quanh khi thi công",
+  ],
+  "2. Thi công sàn lầu 1": [
+    "Xây tường thẳng, vuông góc, đúng mạch vữa",
+    "Đúng chủng loại, độ dày tường theo thiết kế",
+    "Tô trát phẳng, không nứt chân chim",
+    "Đã xử lý điện nước âm tường trước khi tô",
+    "Kiểm tra độ thẳng đứng bằng ni-vô/quả dọi",
+  ],
+  "5. Tô vách xông": [
+    "Tô trát phẳng, không nứt chân chim",
+    "Đúng độ dày lớp tô theo thiết kế",
+    "Đã xử lý chống thấm/chống ẩm vách xông (nếu tiếp giáp ngoài trời)",
+    "Bề mặt đủ độ nhám/phẳng để sơn bả sau này",
+  ],
+  "6. Thi công hệ thống M&E": [
+    "Dây điện đúng tiết diện theo tải sử dụng, đi ống luồn bảo vệ",
+    "Đã đo cách điện, thông mạch từng tuyến trước khi đóng trần/tô trát",
+    "Đường ống cấp nước đã thử áp lực, không rò rỉ tại mối nối",
+    "Đường ống thoát nước đúng độ dốc tối thiểu (~2%)",
+    "Sơ đồ điện nước bàn giao khớp đúng thực tế thi công",
+    "Đã chụp ảnh lưu hồ sơ vị trí âm sàn/âm tường trước khi tô trát/cán nền",
+  ],
+  "7. Thi công ốp lát gạch": [
+    "Đã chống thấm sàn mái/ST/WC/ban công trước khi cán nền, thử ngâm nước 24h không thấm",
+    "Cán nền đúng độ dốc thoát nước khu vực ướt",
+    "Gạch đúng chủng loại, mã đã duyệt",
+    "Mạch gạch đều, thẳng hàng, không bộp rỗng dưới gạch (gõ kiểm tra)",
+  ],
+  "8. Thi công trần thạch cao": [
+    "Khung xương chắc chắn, đúng khoảng cách ty treo theo tiêu chuẩn",
+    "Tấm thạch cao phẳng, không võng, mí ghép đều",
+    "Đã xử lý kỹ vị trí đèn âm trần, miệng gió điều hòa (nếu có)",
+    "Sơn bả mối nối đều màu, không lộ đường ghép",
+  ],
+  "9. Thi công sơn nước": [
+    "Bề mặt bả phẳng, không nứt trước khi sơn",
+    "Đúng mã màu đã duyệt",
+    "Sơn đủ số lớp theo tiêu chuẩn NSX (lót + phủ)",
+    "Không bị loang màu, chảy sơn, để lại vệt lăn",
+  ],
+  "10. Thi công lắp lang can, đá cầu thang, cửa, …": [
+    "Lan can đúng chiều cao an toàn, các thanh đứng đúng khoảng cách quy định",
+    "Đá cầu thang đúng chủng loại, mã đã duyệt, mài cạnh không sắc bén",
+    "Cửa đúng kích thước, chủng loại theo hợp đồng, đóng mở êm không kẹt",
+    "Các mối hàn/lắp đặt chắc chắn, không rung lắc khi lay thử",
+  ],
+  "11. Hoàn thiện mặt tiền, sân trước sân sau": [
+    "Đúng phong cách kiến trúc, vật liệu mặt tiền đã duyệt",
+    "Sân trước/sân sau đúng cao độ, đúng độ dốc thoát nước",
+    "Đã hoàn thiện hệ thống thoát nước sân, hố ga đậy nắp an toàn",
+    "Cây xanh/tiểu cảnh (nếu có) đúng vị trí bản vẽ cảnh quan",
+  ],
+  "12. Hoàn thiện bàn giao": [
+    "Đã hoàn thiện toàn bộ hạng mục theo hợp đồng và bản vẽ",
+    "Đã khắc phục các lỗi tồn đọng trước đó (nếu có)",
+    "Đã vệ sinh công nghiệp toàn bộ công trình",
+    "Đã test vận hành điện, nước, thiết bị",
+    "Đã bàn giao hồ sơ hoàn công, chìa khóa, thiết bị đi kèm",
+    "Đã lập biên bản bàn giao có đủ chữ ký hai bên, thống nhất thời hạn bảo hành",
+  ],
+};
+
+/**
+ * "3. Thi công sàn lầu 02" và "4. Thi công sàn sân thượng" xuất hiện ở CẢ giai đoạn II (đổ bê tông
+ * sàn thật) lẫn giai đoạn III (thực chất là xây/tô tường, đặt tên theo số tầng nên trùng chữ) —
+ * 2 khoá này đã dùng ở giai đoạn II bên trên (đổ bê tông), nên khai báo riêng bản giai đoạn III
+ * (xây/tô tường) theo tên đầy đủ có hậu tố để không ghi đè, gọi trực tiếp qua hàm thay vì khoá tên.
+ */
+export const PHASE3_WALL_CHECKLISTS: Record<string, string[]> = {
+  "3. Thi công sàn lầu 02": [
+    "Xây tường thẳng, vuông góc, đúng mạch vữa",
+    "Tô trát phẳng, không nứt chân chim",
+    "Đã xử lý điện nước âm tường trước khi tô",
+    "Kiểm tra độ thẳng đứng, độ phẳng bề mặt tường",
+  ],
+  "4. Thi công sàn sân thượng": [
+    "Xây tường thẳng, vuông góc, đúng mạch vữa",
+    "Tô trát phẳng, không nứt chân chim",
+    "Đã xử lý chống thấm chân tường tiếp giáp sàn sân thượng",
+    "Đã xử lý điện nước âm tường trước khi tô",
+  ],
 };
 
 /** Checklist chung cho mọi mốc "cốt thép + đổ bê tông cột, sàn ..." (tên khác nhau theo tầng) */

@@ -14,7 +14,7 @@ import {
 import { getChecklistForMilestoneName } from "@/lib/milestone-checklists";
 import { getTasksForMilestoneName } from "@/lib/milestone-tasks";
 import { uploadToStorage, removeFromStorage } from "@/lib/storage";
-import type { PhaseType, InspectionMethod, InspectionResult, Weather } from "@prisma/client";
+import type { PhaseType, InspectionMethod, InspectionResult, Weather, Prisma } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const dateOrNull = (fd: FormData, k: string) => (str(fd, k) ? new Date(str(fd, k)) : null);
@@ -228,16 +228,96 @@ export async function createMilestone(phaseId: string, fd: FormData) {
 }
 
 /** Sửa mốc: đổi tên, ngày dự kiến, cờ Hold Point, hạn xác nhận */
+/**
+ * Đẩy lịch dây chuyền theo quan hệ phụ thuộc (TaskDependency, finish-to-start): khi 1 mốc/việc dời
+ * ngày đi `deltaMs`, mọi mốc/việc phụ thuộc trực tiếp/gián tiếp phía sau cũng dời đúng `deltaMs`
+ * (giữ nguyên khoảng cách người dùng đã đặt, không tính lại CPM đầy đủ). Việc/mốc nào chưa có ngày
+ * thì bỏ qua (không có gì để dời). `visited` chặn lặp vô hạn nếu đồ thị có vòng hoặc hội tụ nhiều nhánh.
+ */
+async function cascadeReschedule(
+  tx: Prisma.TransactionClient,
+  type: "MILESTONE" | "MILESTONE_TASK",
+  id: string,
+  deltaMs: number,
+  visited: Set<string> = new Set(),
+) {
+  if (deltaMs === 0) return;
+  const key = `${type}:${id}`;
+  if (visited.has(key)) return;
+  visited.add(key);
+
+  const successors = await tx.taskDependency.findMany({ where: { predecessorType: type, predecessorId: id } });
+  for (const dep of successors) {
+    const succKey = `${dep.successorType}:${dep.successorId}`;
+    if (visited.has(succKey)) continue;
+
+    if (dep.successorType === "MILESTONE") {
+      const m = await tx.milestone.findUnique({ where: { id: dep.successorId } });
+      if (!m?.plannedDate) continue;
+      await tx.milestone.update({ where: { id: m.id }, data: { plannedDate: new Date(m.plannedDate.getTime() + deltaMs) } });
+    } else {
+      const t = await tx.milestoneTask.findUnique({ where: { id: dep.successorId } });
+      if (!t?.dueDate) continue;
+      await tx.milestoneTask.update({ where: { id: t.id }, data: { dueDate: new Date(t.dueDate.getTime() + deltaMs) } });
+    }
+    await cascadeReschedule(tx, dep.successorType as "MILESTONE" | "MILESTONE_TASK", dep.successorId, deltaMs, visited);
+  }
+}
+
 export async function updateMilestone(milestoneId: string, fd: FormData) {
   await requireUser();
-  await prisma.milestone.update({
-    where: { id: milestoneId },
-    data: {
-      name: str(fd, "name"),
-      isHoldPoint: fd.get("isHoldPoint") === "on",
-      plannedDate: dateOrNull(fd, "plannedDate"),
-      confirmDeadlineHrs: Number(str(fd, "confirmDeadlineHrs") || 48),
-    },
+  const before = await prisma.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
+  const plannedDate = dateOrNull(fd, "plannedDate");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestone.update({
+      where: { id: milestoneId },
+      data: {
+        name: str(fd, "name"),
+        isHoldPoint: fd.get("isHoldPoint") === "on",
+        plannedDate,
+        confirmDeadlineHrs: Number(str(fd, "confirmDeadlineHrs") || 48),
+      },
+    });
+    if (before.plannedDate && plannedDate) {
+      const delta = plannedDate.getTime() - before.plannedDate.getTime();
+      await cascadeReschedule(tx, "MILESTONE", milestoneId, delta);
+    }
+  });
+  revalidate();
+}
+
+/**
+ * Sửa nhanh 1 vài field của mốc trực tiếp từ Gantt chi tiết (click-to-edit, giống
+ * updateMilestoneTaskFields) — dùng cho mốc CHƯA có WBS con, nơi PIC/% không có nguồn nào khác để
+ * gán ngoài gõ tay thẳng vào mốc. Đổi plannedDate cũng đẩy lịch dây chuyền như updateMilestone().
+ */
+export async function updateMilestoneFields(
+  milestoneId: string,
+  data: { plannedDate?: string | null; responsible?: string | null; percentComplete?: number | null },
+) {
+  await requireUser();
+  const before = await prisma.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
+  const patch: { plannedDate?: Date | null; responsible?: string | null; percentComplete?: number | null } = {};
+  if (data.plannedDate !== undefined) {
+    if (!data.plannedDate) {
+      patch.plannedDate = null;
+    } else {
+      const d = safeDate(data.plannedDate);
+      if (d) patch.plannedDate = d; // ngày rác (ngoài 1970-2200) thì bỏ qua, không ghi đè
+    }
+  }
+  if (data.responsible !== undefined) patch.responsible = data.responsible || null;
+  if (data.percentComplete !== undefined) {
+    patch.percentComplete = data.percentComplete == null ? null : Math.max(0, Math.min(100, Math.round(data.percentComplete)));
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestone.update({ where: { id: milestoneId }, data: patch });
+    if (patch.plannedDate !== undefined && before.plannedDate && patch.plannedDate) {
+      const delta = patch.plannedDate.getTime() - before.plannedDate.getTime();
+      await cascadeReschedule(tx, "MILESTONE", milestoneId, delta);
+    }
   });
   revalidate();
 }
@@ -400,10 +480,11 @@ function safeDate(iso: string): Date | undefined {
 /** Sửa nhanh Hạn/PIC/% của 1 việc WBS ngay trên Gantt chi tiết — click-to-edit, tự lưu */
 export async function updateMilestoneTaskFields(
   taskId: string,
-  data: { dueDate?: string | null; responsible?: string | null; percentComplete?: number },
+  data: { dueDate?: string | null; responsible?: string | null; percentComplete?: number; durationDays?: number },
 ) {
   await requireUser();
-  const patch: { dueDate?: Date | null; responsible?: string | null; percentComplete?: number; isDone?: boolean; doneAt?: Date | null } = {};
+  const before = await prisma.milestoneTask.findUniqueOrThrow({ where: { id: taskId } });
+  const patch: { dueDate?: Date | null; responsible?: string | null; percentComplete?: number; isDone?: boolean; doneAt?: Date | null; durationDays?: number } = {};
   if (data.dueDate !== undefined) {
     if (!data.dueDate) {
       patch.dueDate = null;
@@ -419,7 +500,15 @@ export async function updateMilestoneTaskFields(
     patch.isDone = pct >= 100;
     patch.doneAt = pct >= 100 ? new Date() : null;
   }
-  await prisma.milestoneTask.update({ where: { id: taskId }, data: patch });
+  if (data.durationDays !== undefined) patch.durationDays = Math.max(1, Math.round(data.durationDays));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.milestoneTask.update({ where: { id: taskId }, data: patch });
+    if (patch.dueDate !== undefined && before.dueDate && patch.dueDate) {
+      const delta = patch.dueDate.getTime() - before.dueDate.getTime();
+      await cascadeReschedule(tx, "MILESTONE_TASK", taskId, delta);
+    }
+  });
   revalidate();
 }
 
@@ -636,4 +725,184 @@ export async function deleteDailyLogPhoto(id: string) {
   await prisma.document.delete({ where: { id } });
   await removeFromStorage(doc.fileUrl);
   revalidate();
+}
+
+/** Tải nhiều ảnh hiện trường lên cho 1 công việc WBS (MilestoneTask) — bằng chứng thi công/nghiệm thu */
+export async function uploadMilestoneTaskPhotos(
+  taskId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa chọn ảnh nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+    }
+
+    for (const file of files) {
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId,
+          docType: "SITE_PHOTO",
+          title: file.name,
+          fileUrl: path,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          milestoneTaskId: taskId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+/** Xóa 1 ảnh hiện trường đã gắn vào công việc WBS (xóa cả file trong storage, tránh mồ côi) */
+export async function deleteMilestoneTaskPhoto(id: string) {
+  await requireUser();
+  const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
+  await prisma.document.delete({ where: { id } });
+  await removeFromStorage(doc.fileUrl);
+  revalidate();
+}
+
+/**
+ * Tải nhiều ảnh hiện trường lên thẳng cho 1 mốc nghiệm thu (Milestone) — dùng khi mốc chưa có
+ * WBS con nào (nhiều mốc mới nhập từ nhà thầu chưa có việc con), khỏi phải thêm việc con giả chỉ
+ * để có chỗ gắn ảnh.
+ */
+export async function uploadMilestonePhotos(
+  milestoneId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa chọn ảnh nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+    }
+
+    for (const file of files) {
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId,
+          docType: "SITE_PHOTO",
+          title: file.name,
+          fileUrl: path,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          milestoneId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+/** Xóa 1 ảnh hiện trường đã gắn vào mốc nghiệm thu (xóa cả file trong storage, tránh mồ côi) */
+export async function deleteMilestonePhoto(id: string) {
+  await requireUser();
+  const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
+  await prisma.document.delete({ where: { id } });
+  await removeFromStorage(doc.fileUrl);
+  revalidate();
+}
+
+/**
+ * Ghi âm giọng nói qua mic trên trình duyệt (MediaRecorder) — bằng chứng/ghi chú nhanh không cần
+ * gõ chữ. Dùng chung UploadPhotosState/cơ chế lưu trữ với ảnh hiện trường, chỉ khác docType.
+ * Xóa dùng chung với delete*Photo tương ứng (đều xóa theo Document.id, không phân biệt loại file).
+ */
+export async function uploadDailyLogVoiceNote(
+  dailyLogId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa có bản ghi âm nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId, docType: "VOICE_NOTE", title: file.name, fileUrl: path,
+          mimeType: file.type || null, fileSize: file.size, dailyLogId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+export async function uploadMilestoneVoiceNote(
+  milestoneId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa có bản ghi âm nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId, docType: "VOICE_NOTE", title: file.name, fileUrl: path,
+          mimeType: file.type || null, fileSize: file.size, milestoneId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+export async function uploadMilestoneTaskVoiceNote(
+  taskId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa có bản ghi âm nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId, docType: "VOICE_NOTE", title: file.name, fileUrl: path,
+          mimeType: file.type || null, fileSize: file.size, milestoneTaskId: taskId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
 }

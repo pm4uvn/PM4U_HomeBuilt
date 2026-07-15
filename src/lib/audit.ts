@@ -15,7 +15,8 @@ export type AuditAction =
   | "VARIATION_REJECTED"
   | "INSPECTION_RECORDED"
   | "RISK_STATUS_CHANGED"
-  | "ISSUE_STATUS_CHANGED";
+  | "ISSUE_STATUS_CHANGED"
+  | "DEFECT_STATUS_CHANGED";
 
 export async function logAudit(params: {
   projectId: string;

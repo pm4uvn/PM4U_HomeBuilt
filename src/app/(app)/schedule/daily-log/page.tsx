@@ -6,9 +6,10 @@ import { getSignedUrl } from "@/lib/storage";
 import { fmtDate } from "@/lib/format";
 import { WEATHER } from "@/lib/labels";
 import {
-  DailyLogForm, EditDailyLogForm, DeleteDailyLogButton, DailyLogItemsView, DailyLogPhotos,
+  DailyLogForm, EditDailyLogForm, DeleteDailyLogButton, DailyLogItemsView, DailyLogPhotos, VoiceNotes,
   type DailyLogVatTuOption, type DailyLogDocumentOption, type DailyLogContractOption,
 } from "../forms";
+import { uploadDailyLogVoiceNote, deleteDailyLogPhoto } from "../actions";
 import { ScheduleTabs } from "../ScheduleTabs";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export default async function DailyLogPage() {
             contract: { select: { code: true, title: true, vendor: { select: { name: true } } } },
           },
         },
-        documents: { where: { docType: "SITE_PHOTO" }, orderBy: { uploadedAt: "asc" } },
+        documents: { where: { docType: { in: ["SITE_PHOTO", "VOICE_NOTE"] } }, orderBy: { uploadedAt: "asc" } },
       },
     }),
     duAn
@@ -99,15 +100,15 @@ export default async function DailyLogPage() {
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayLog = dailyLogs.find((d) => d.logDate.toISOString().slice(0, 10) === todayStr);
 
-  // Ảnh hiện trường: tạo signed URL (bucket private) cho mọi ảnh của 14 ngày đang hiện
+  // Ảnh hiện trường + ghi âm giọng nói: tạo signed URL (bucket private) cho mọi file của 14 ngày đang hiện
   const photosByLog = new Map<string, { id: string; url: string; title: string }[]>();
+  const voiceNotesByLog = new Map<string, { id: string; url: string; title: string }[]>();
   await Promise.all(
     dailyLogs.map(async (d) => {
       const urls = await Promise.all(d.documents.map((doc) => getSignedUrl(doc.fileUrl)));
-      photosByLog.set(
-        d.id,
-        d.documents.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title })).filter((p) => p.url),
-      );
+      const resolved = d.documents.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title, docType: doc.docType })).filter((p) => p.url);
+      photosByLog.set(d.id, resolved.filter((p) => p.docType === "SITE_PHOTO"));
+      voiceNotesByLog.set(d.id, resolved.filter((p) => p.docType === "VOICE_NOTE"));
     }),
   );
 
@@ -194,7 +195,16 @@ export default async function DailyLogPage() {
                     {d.items.length > 0 && d.workDescription && (
                       <div className="text-xs text-muted mt-1 italic">{d.workDescription}</div>
                     )}
-                    <DailyLogPhotos dailyLogId={d.id} projectId={project.id} photos={photosByLog.get(d.id) ?? []} />
+                    <div className="flex flex-wrap gap-3 items-start">
+                      <DailyLogPhotos dailyLogId={d.id} projectId={project.id} photos={photosByLog.get(d.id) ?? []} />
+                      <VoiceNotes
+                        notes={voiceNotesByLog.get(d.id) ?? []}
+                        entityId={d.id}
+                        projectId={project.id}
+                        uploadAction={uploadDailyLogVoiceNote}
+                        onDelete={deleteDailyLogPhoto}
+                      />
+                    </div>
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2 justify-end whitespace-nowrap">

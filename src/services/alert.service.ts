@@ -9,6 +9,7 @@ import { computePreConstructionRiskAlerts } from "./preconstruction.service";
 import type { AlertType, RiskSeverity } from "@prisma/client";
 
 const CONTRACT_DEADLINE_WARN_DAYS = 14;
+const WARRANTY_EXPIRING_WARN_DAYS = 30;
 
 const HOUR = 3_600_000;
 
@@ -26,7 +27,7 @@ export async function computeAlerts(projectId: string) {
   const alerts: NewAlert[] = [];
   const now = new Date();
 
-  const [stages, milestones, idleLogs, pilingRecords, project, purchases, undergroundRisks, nearDeadlineContracts, preconAlerts] =
+  const [stages, milestones, idleLogs, pilingRecords, project, purchases, undergroundRisks, nearDeadlineContracts, preconAlerts, expiringDefects] =
     await Promise.all([
       prisma.paymentStage.findMany({
         where: { contract: { projectId }, status: { in: ["DUE", "OVERDUE", "PARTIAL"] } },
@@ -53,6 +54,14 @@ export async function computeAlerts(projectId: string) {
         include: { vendor: true },
       }),
       computePreConstructionRiskAlerts(projectId),
+      prisma.defectLog.findMany({
+        where: {
+          projectId,
+          status: { in: ["OPEN", "IN_PROGRESS"] },
+          warrantyEndAt: { not: null, lte: new Date(now.getTime() + WARRANTY_EXPIRING_WARN_DAYS * 86_400_000) },
+        },
+        include: { contract: { include: { vendor: true } } },
+      }),
     ]);
 
   // 1. Thanh toán tới hạn / quá hạn / đã trả một phần
@@ -206,6 +215,25 @@ export async function computeAlerts(projectId: string) {
       message: a.description,
       refTable: "PreConstructionRule",
       refId: a.ruleId,
+    });
+  }
+
+  // 9. Khiếm khuyết chưa xử lý xong mà sắp/đã hết hạn khiếu nại bảo hành nhà thầu
+  for (const d of expiringDefects) {
+    const diffDays = Math.floor((d.warrantyEndAt!.getTime() - now.getTime()) / 86_400_000);
+    const expired = diffDays < 0;
+    alerts.push({
+      type: "WARRANTY_EXPIRING",
+      severity: expired ? "CRITICAL" : diffDays <= 7 ? "HIGH" : "MEDIUM",
+      title: expired
+        ? `HẾT HẠN bảo hành — "${d.title}" chưa xử lý xong`
+        : `Sắp hết hạn bảo hành — "${d.title}"`,
+      message: expired
+        ? `Đã hết hạn bảo hành ${Math.abs(diffDays)} ngày (${d.warrantyEndAt!.toLocaleDateString("vi-VN")}) mà khiếm khuyết chưa xử lý xong.${d.contract ? ` Nhà thầu: ${d.contract.vendor.name}.` : ""} Liên hệ khiếu nại ngay nếu còn trong thời hạn cho phép.`
+        : `Còn ${diffDays} ngày là hết hạn bảo hành (${d.warrantyEndAt!.toLocaleDateString("vi-VN")}).${d.contract ? ` Nhà thầu: ${d.contract.vendor.name}.` : ""}`,
+      dueAt: d.warrantyEndAt!,
+      refTable: "DefectLog",
+      refId: d.id,
     });
   }
 

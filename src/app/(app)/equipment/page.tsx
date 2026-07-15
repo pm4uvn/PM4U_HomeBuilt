@@ -3,15 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
 import { Card, EmptyState } from "@/components/ui";
 import { fmtVND } from "@/lib/format";
-import { MaterialsTabs } from "./MaterialsTabs";
+import { EquipmentTabs } from "./EquipmentTabs";
 import {
-  AddVatTuDuAnForm, BudgetAllocationChart, MaterialsGroupedList, type VatTuDuAnRow,
+  AddThietBiDuAnForm, AutoSuggestEquipmentButton, EquipmentBudgetChart, EquipmentGroupedList, type ThietBiDuAnRow,
   type CatalogItemForForm, type NccOption, type NhomTong, type MilestoneOption,
 } from "./forms";
+import { sumRoomCounts, buildEquipmentSuggestions } from "@/lib/equipment-suggestions";
 
 export const dynamic = "force-dynamic";
 
-export default async function MaterialsPage() {
+export default async function EquipmentProjectPage() {
   await requireUser();
 
   const [duAn, project] = await Promise.all([
@@ -21,26 +22,25 @@ export default async function MaterialsPage() {
   if (!duAn) {
     return (
       <Card>
-        <EmptyState title="Chưa có dự án vật tư" sub="Chạy database/004_seed_du_lieu_mau.sql để tạo dự án mẫu" />
+        <EmptyState title="Chưa có dự án vật tư/thiết bị" sub="Chạy database/004_seed_du_lieu_mau.sql để tạo dự án mẫu" />
       </Card>
     );
   }
 
-  const [vatTuDuAnList, catalogList, nccList, phases] = await Promise.all([
-    prisma.vatTuDuAn.findMany({
+  const [thietBiDuAnList, catalogList, nccList, phases, charter] = await Promise.all([
+    prisma.thietBiDuAn.findMany({
       where: { idDuAn: duAn.id },
       include: {
-        vatTu: { include: { nhom: true } },
+        thietBi: true,
         nhaCungCap: true,
         milestone: true,
         congViec: { orderBy: { thuTu: "asc" } },
       },
-      orderBy: [{ vatTu: { nhom: { thuTu: "asc" } } }, { id: "asc" }],
+      orderBy: [{ thietBi: { maNhom: "asc" } }, { id: "asc" }],
     }),
-    prisma.vatTu.findMany({
-      where: { trangThai: "dang_dung" },
-      include: { nhom: true },
-      orderBy: [{ nhom: { thuTu: "asc" } }, { maVatTu: "asc" }],
+    prisma.thietBi.findMany({
+      where: { trangThai: "dang_su_dung" },
+      orderBy: [{ maNhom: "asc" }, { maDanhMuc: "asc" }],
     }),
     prisma.nhaCungCapVatTu.findMany({ where: { trangThai: "dang_dung" }, orderBy: { tenNhaCungCap: "asc" } }),
     project
@@ -50,7 +50,26 @@ export default async function MaterialsPage() {
           include: { milestones: { orderBy: { plannedDate: "asc" } } },
         })
       : Promise.resolve([]),
+    project
+      ? prisma.projectCharter.findUnique({ where: { projectId: project.id }, include: { floorPlans: true } })
+      : Promise.resolve(null),
   ]);
+
+  const addedThietBiIds = new Set(thietBiDuAnList.map((r) => r.idThietBi));
+  const suggestions = charter
+    ? buildEquipmentSuggestions(
+        sumRoomCounts(charter.floorPlans),
+        catalogList.map((t) => ({
+          id: t.id,
+          tenHangMuc: t.tenHangMuc,
+          donViTinh: t.donViTinh,
+          giaThap: t.giaThap ? Number(t.giaThap) : null,
+          giaTrungBinh: t.giaTrungBinh ? Number(t.giaTrungBinh) : null,
+          giaCao: t.giaCao ? Number(t.giaCao) : null,
+        })),
+        addedThietBiIds,
+      )
+    : [];
 
   const milestoneOptions: MilestoneOption[] = phases.flatMap((p) =>
     p.milestones.map((m) => ({
@@ -61,52 +80,52 @@ export default async function MaterialsPage() {
     })),
   );
 
-  const rows: VatTuDuAnRow[] = vatTuDuAnList.map((r) => ({
-    id: r.id.toString(),
-    maVatTu: r.vatTu.maVatTu,
-    tenVatTu: r.vatTu.tenVatTu,
-    tenNhomVatTu: r.vatTu.nhom.tenNhomVatTu,
-    khuVucSuDung: r.khuVucSuDung,
-    khoiLuongDuKien: r.khoiLuongDuKien ? Number(r.khoiLuongDuKien) : null,
-    khoiLuongThucTe: r.khoiLuongThucTe ? Number(r.khoiLuongThucTe) : null,
-    donViTinh: r.donViTinh ?? r.vatTu.donViTinh,
+  const rows: ThietBiDuAnRow[] = thietBiDuAnList.map((r) => ({
+    id: r.id,
+    maDanhMuc: r.thietBi.maDanhMuc,
+    tenHangMuc: r.thietBi.tenHangMuc,
+    nhomCap1: r.thietBi.nhomCap1,
+    viTriLapDat: r.viTriLapDat,
+    soLuongDuKien: r.soLuongDuKien ? Number(r.soLuongDuKien) : null,
+    soLuongThucTe: r.soLuongThucTe ? Number(r.soLuongThucTe) : null,
+    donViTinh: r.donViTinh ?? r.thietBi.donViTinh,
     donGiaDuKien: r.donGiaDuKien ? Number(r.donGiaDuKien) : null,
     donGiaChot: r.donGiaChot ? Number(r.donGiaChot) : null,
-    donGiaThamKhao: r.vatTu.donGiaThamKhao ? Number(r.vatTu.donGiaThamKhao) : null,
+    giaTrungBinh: r.thietBi.giaTrungBinh ? Number(r.thietBi.giaTrungBinh) : null,
     thanhTienDuKien: r.thanhTienDuKien
       ? Number(r.thanhTienDuKien)
-      : r.khoiLuongDuKien && r.donGiaDuKien
-        ? Number(r.khoiLuongDuKien) * Number(r.donGiaDuKien)
+      : r.soLuongDuKien && r.donGiaDuKien
+        ? Number(r.soLuongDuKien) * Number(r.donGiaDuKien)
         : null,
     thanhTienChot: r.thanhTienChot
       ? Number(r.thanhTienChot)
-      : r.khoiLuongThucTe && r.donGiaChot
-        ? Number(r.khoiLuongThucTe) * Number(r.donGiaChot)
+      : r.soLuongThucTe && r.donGiaChot
+        ? Number(r.soLuongThucTe) * Number(r.donGiaChot)
         : null,
     nguoiMua: r.nguoiMua,
-    trangThaiChotMau: r.trangThaiChotMau,
+    trangThaiChonModel: r.trangThaiChonModel,
     trangThaiDatHang: r.trangThaiDatHang,
     trangThaiGiaoHang: r.trangThaiGiaoHang,
-    trangThaiThiCong: r.trangThaiThiCong,
-    ngayCanChotMau: r.ngayCanChotMau?.toISOString() ?? null,
+    trangThaiLapDat: r.trangThaiLapDat,
+    ngayCanChonModel: r.ngayCanChonModel?.toISOString() ?? null,
     ngayCanDatHang: r.ngayCanDatHang?.toISOString() ?? null,
     ngayCanGiaoHang: r.ngayCanGiaoHang?.toISOString() ?? null,
-    ngayCanThiCong: r.ngayCanThiCong?.toISOString() ?? null,
+    ngayCanLapDat: r.ngayCanLapDat?.toISOString() ?? null,
     ghiChu: r.ghiChu,
     nhaCungCap: r.nhaCungCap ? { id: r.nhaCungCap.id.toString(), tenNhaCungCap: r.nhaCungCap.tenNhaCungCap } : null,
     milestone: r.milestone
       ? { id: r.milestone.id, name: r.milestone.name, plannedDate: r.milestone.plannedDate?.toISOString() ?? null }
       : null,
-    congViec: r.congViec.map((c) => ({ id: c.id.toString(), tenCongViec: c.tenCongViec, trangThai: c.trangThai })),
+    congViec: r.congViec.map((c) => ({ id: c.id, tenCongViec: c.tenCongViec, trangThai: c.trangThai })),
   }));
 
-  const catalog: CatalogItemForForm[] = catalogList.map((v) => ({
-    id: v.id.toString(),
-    maVatTu: v.maVatTu,
-    tenVatTu: v.tenVatTu,
-    tenNhomVatTu: v.nhom.tenNhomVatTu,
-    donViTinh: v.donViTinh,
-    donGiaThamKhao: v.donGiaThamKhao ? Number(v.donGiaThamKhao) : null,
+  const catalog: CatalogItemForForm[] = catalogList.map((t) => ({
+    id: t.id,
+    maDanhMuc: t.maDanhMuc,
+    tenHangMuc: t.tenHangMuc,
+    nhomCap1: t.nhomCap1,
+    donViTinh: t.donViTinh,
+    giaTrungBinh: t.giaTrungBinh ? Number(t.giaTrungBinh) : null,
   }));
 
   const nccOptions: NccOption[] = nccList.map((n) => ({ id: n.id.toString(), tenNhaCungCap: n.tenNhaCungCap }));
@@ -114,33 +133,30 @@ export default async function MaterialsPage() {
   const tongDuKien = rows.reduce((s, r) => s + (r.thanhTienDuKien ?? 0), 0);
   const tongChot = rows.reduce((s, r) => s + (r.thanhTienChot ?? 0), 0);
 
-  // Phát sinh: chỉ so sánh dự kiến vs chốt của CÙNG các vật tư đã chốt giá — so cả tổng dự kiến
-  // (gồm cả vật tư chưa mua) sẽ luôn ra âm giả tạo, không phản ánh đúng biến động giá thực tế
   const rowsDaChot = rows.filter((r) => r.thanhTienChot != null);
   const duKienCuaCacMucDaChot = rowsDaChot.reduce((s, r) => s + (r.thanhTienDuKien ?? 0), 0);
   const chotCuaCacMucDaChot = rowsDaChot.reduce((s, r) => s + (r.thanhTienChot ?? 0), 0);
   const phatSinh = chotCuaCacMucDaChot - duKienCuaCacMucDaChot;
   const phatSinhPct = duKienCuaCacMucDaChot > 0 ? (phatSinh / duKienCuaCacMucDaChot) * 100 : 0;
 
-  // Tổng dự kiến theo giá tham khảo thị trường: giữ nguyên khối lượng dự kiến, thay đơn giá dự kiến
-  // của dự án bằng đơn giá tham khảo web (Danh mục chuẩn) — so trên CÙNG tập vật tư có đủ 2 dữ liệu
-  // để không lệch do vật tư thiếu giá tham khảo hoặc thiếu khối lượng.
-  const rowsCoThamKhao = rows.filter((r) => r.donGiaThamKhao != null && r.khoiLuongDuKien != null);
+  // Tổng dự kiến theo giá tham khảo (Danh mục) — giữ nguyên số lượng dự kiến, thay đơn giá dự kiến
+  // của dự án bằng giá trung bình tham khảo, so trên CÙNG tập có đủ 2 dữ liệu
+  const rowsCoThamKhao = rows.filter((r) => r.giaTrungBinh != null && r.soLuongDuKien != null);
   const duKienCuaCacMucThamKhao = rowsCoThamKhao.reduce((s, r) => s + (r.thanhTienDuKien ?? 0), 0);
-  const tongThamKhao = rowsCoThamKhao.reduce((s, r) => s + r.khoiLuongDuKien! * r.donGiaThamKhao!, 0);
+  const tongThamKhao = rowsCoThamKhao.reduce((s, r) => s + r.soLuongDuKien! * r.giaTrungBinh!, 0);
   const gapThamKhao = tongThamKhao - duKienCuaCacMucThamKhao;
   const gapThamKhaoPct = duKienCuaCacMucThamKhao > 0 ? (gapThamKhao / duKienCuaCacMucThamKhao) * 100 : 0;
 
-  const soDaChotMau = rows.filter((r) => r.trangThaiChotMau === "da_chot").length;
+  const soDaChonModel = rows.filter((r) => r.trangThaiChonModel === "da_chon").length;
   const soDaDat = rows.filter((r) => ["da_dat", "da_mua"].includes(r.trangThaiDatHang)).length;
   const soDaGiao = rows.filter((r) => r.trangThaiGiaoHang === "da_giao").length;
-  const soDaNghiemThu = rows.filter((r) => r.trangThaiThiCong === "da_nghiem_thu").length;
+  const soDaLapDat = rows.filter((r) => r.trangThaiLapDat === "da_lap_dat").length;
 
-  const groups = [...new Set(rows.map((r) => r.tenNhomVatTu))];
+  const groups = [...new Set(rows.map((r) => r.nhomCap1))];
 
   const groupTotals: NhomTong[] = groups
     .map((g) => {
-      const groupRows = rows.filter((r) => r.tenNhomVatTu === g);
+      const groupRows = rows.filter((r) => r.nhomCap1 === g);
       return {
         group: g,
         total: groupRows.reduce((s, r) => s + (r.thanhTienDuKien ?? 0), 0),
@@ -152,11 +168,12 @@ export default async function MaterialsPage() {
 
   return (
     <div className="space-y-3">
-      <MaterialsTabs />
+      <EquipmentTabs />
       <header className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-xl font-bold">🧱 Vật tư — {duAn.tenDuAn}</h1>
-        <div className="ml-auto">
-          <AddVatTuDuAnForm
+        <h1 className="text-xl font-bold">🔌 Thiết bị — {duAn.tenDuAn}</h1>
+        <div className="ml-auto flex gap-2">
+          <AutoSuggestEquipmentButton idDuAn={duAn.id.toString()} suggestions={suggestions} />
+          <AddThietBiDuAnForm
             idDuAn={duAn.id.toString()}
             catalog={catalog}
             nccOptions={nccOptions}
@@ -184,12 +201,12 @@ export default async function MaterialsPage() {
                 {phatSinh > 0 ? "+" : ""}{fmtVND(phatSinh)}
               </p>
               <p className="text-xs text-muted mt-0.5">
-                {phatSinhPct > 0 ? "+" : ""}{phatSinhPct.toFixed(1)}% · {rowsDaChot.length} vật tư đã chốt
+                {phatSinhPct > 0 ? "+" : ""}{phatSinhPct.toFixed(1)}% · {rowsDaChot.length} thiết bị đã chốt
               </p>
             </>
           )}
         </Card>
-        <Card title="Tổng dự kiến theo giá tham khảo web">
+        <Card title="Tổng dự kiến theo giá tham khảo">
           {rowsCoThamKhao.length === 0 ? (
             <p className="text-lg font-bold text-muted">—</p>
           ) : (
@@ -199,22 +216,22 @@ export default async function MaterialsPage() {
                 className="text-xs mt-0.5"
                 style={{ color: gapThamKhao > 0 ? "var(--critical)" : gapThamKhao < 0 ? "var(--good-text)" : undefined }}
               >
-                {gapThamKhaoPct > 0 ? "+" : ""}{gapThamKhaoPct.toFixed(1)}% so với dự kiến · {rowsCoThamKhao.length}/{rows.length} vật tư có giá tham khảo
+                {gapThamKhaoPct > 0 ? "+" : ""}{gapThamKhaoPct.toFixed(1)}% so với dự kiến · {rowsCoThamKhao.length}/{rows.length} thiết bị có giá tham khảo
               </p>
             </>
           )}
         </Card>
-        <Card title="Đã chốt mẫu / đặt hàng">
-          <p className="text-lg font-bold">{soDaChotMau} / {soDaDat} <span className="text-sm text-muted">/ {rows.length}</span></p>
+        <Card title="Đã chọn model / đặt hàng">
+          <p className="text-lg font-bold">{soDaChonModel} / {soDaDat} <span className="text-sm text-muted">/ {rows.length}</span></p>
         </Card>
-        <Card title="Đã giao / nghiệm thu">
-          <p className="text-lg font-bold">{soDaGiao} / {soDaNghiemThu} <span className="text-sm text-muted">/ {rows.length}</span></p>
+        <Card title="Đã giao / lắp đặt">
+          <p className="text-lg font-bold">{soDaGiao} / {soDaLapDat} <span className="text-sm text-muted">/ {rows.length}</span></p>
         </Card>
       </div>
 
       {rows.length === 0 ? (
         <Card>
-          <EmptyState title="Chưa có vật tư nào trong dự án" sub="Bấm “+ Thêm vật tư” để chọn từ danh mục chuẩn" />
+          <EmptyState title="Chưa có thiết bị nào trong dự án" sub="Bấm “+ Thêm thiết bị” để chọn từ danh mục tham khảo" />
         </Card>
       ) : (
         <>
@@ -224,17 +241,17 @@ export default async function MaterialsPage() {
                 <p className="font-bold text-[14px]">{n.group}</p>
                 <p className="money text-lg font-bold mt-0.5">{fmtVND(n.total)}</p>
                 <p className="text-xs text-muted mt-0.5">
-                  {tongDuKien > 0 ? ((n.total / tongDuKien) * 100).toFixed(1) : "0"}% tổng dự kiến · {n.count} vật tư
+                  {tongDuKien > 0 ? ((n.total / tongDuKien) * 100).toFixed(1) : "0"}% tổng dự kiến · {n.count} thiết bị
                 </p>
               </Card>
             ))}
           </div>
 
-          <Card title="Phân bổ chi phí dự kiến theo nhóm vật tư">
-            <BudgetAllocationChart data={groupTotals} totalSum={tongDuKien} />
+          <Card title="Phân bổ chi phí dự kiến theo nhóm thiết bị">
+            <EquipmentBudgetChart data={groupTotals} totalSum={tongDuKien} />
           </Card>
 
-          <MaterialsGroupedList rows={rows} nccOptions={nccOptions} milestoneOptions={milestoneOptions} />
+          <EquipmentGroupedList rows={rows} nccOptions={nccOptions} milestoneOptions={milestoneOptions} />
         </>
       )}
     </div>

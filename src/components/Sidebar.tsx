@@ -12,10 +12,12 @@ const NAV = [
   { href: "/contracts", label: "Hợp đồng", icon: "📋" },
   { href: "/schedule", label: "Tiến độ", icon: "📅" },
   { href: "/materials", label: "Vật tư", icon: "🧱" },
+  { href: "/equipment", label: "Thiết bị", icon: "🔌" },
   { href: "/cashflow", label: "Dòng tiền", icon: "💰" },
   { href: "/accounts", label: "Tài khoản", icon: "🏦" },
   { href: "/risks", label: "Rủi ro", icon: "⚠️" },
   { href: "/issues", label: "Vấn đề", icon: "🐞" },
+  { href: "/defects", label: "Bảo hành", icon: "🔧" },
   { href: "/documents", label: "Hồ sơ", icon: "📁" },
 ];
 

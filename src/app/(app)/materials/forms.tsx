@@ -48,6 +48,7 @@ export type VatTuDuAnRow = {
   donViTinh: string | null;
   donGiaDuKien: number | null;
   donGiaChot: number | null;
+  donGiaThamKhao: number | null; // giá tham khảo thị trường từ Danh mục vật tư chuẩn
   thanhTienDuKien: number | null;
   thanhTienChot: number | null;
   nguoiMua: string;
@@ -494,6 +495,11 @@ function MaterialRow({
   const phatSinhPct = phatSinh != null && r.thanhTienDuKien ? (phatSinh / r.thanhTienDuKien) * 100 : null;
   const overdue = overdueStages(r, today);
 
+  // So giá tham khảo web (Danh mục chuẩn) với đơn giá đang lập cho dự án — giúp nhìn nhanh giá đang
+  // cao/thấp hơn thị trường bao nhiêu % ngay tại từng dòng, không phải mở Danh mục tham khảo để đối chiếu
+  const soVoiDuKien = r.donGiaThamKhao != null && r.donGiaDuKien != null ? r.donGiaThamKhao - r.donGiaDuKien : null;
+  const soVoiDuKienPct = soVoiDuKien != null && r.donGiaDuKien ? (soVoiDuKien / r.donGiaDuKien) * 100 : null;
+
   return (
     <div className="border border-line rounded-lg px-3 py-2">
       <div className="flex items-start gap-3 flex-wrap">
@@ -506,6 +512,16 @@ function MaterialRow({
             <span className="money font-semibold">{r.thanhTienDuKien ? fmtVND(r.thanhTienDuKien) : "—"}</span>
             {r.nhaCungCap && <> · {r.nhaCungCap.tenNhaCungCap}</>}
           </div>
+          {r.donGiaThamKhao != null && (
+            <div className="text-xs text-muted mt-0.5">
+              💡 Giá tham khảo web: <span className="money font-medium text-ink-2">{fmtVND(r.donGiaThamKhao)}</span>
+              {soVoiDuKienPct != null && Math.abs(soVoiDuKienPct) >= 0.5 && (
+                <span style={{ color: soVoiDuKien! > 0 ? "var(--critical)" : "var(--good-text)" }}>
+                  {" "}· {soVoiDuKien! > 0 ? "cao hơn" : "thấp hơn"} {Math.abs(soVoiDuKienPct).toFixed(0)}% giá đang lập
+                </span>
+              )}
+            </div>
+          )}
           {r.thanhTienChot != null && (
             <div className="text-xs mt-0.5">
               <span className="text-ink-2">
@@ -633,21 +649,79 @@ export type CatalogRow = {
   nguonMuaMacDinh: string;
 };
 
-/** Danh mục vật tư tham khảo (130 vật tư chuẩn) — chọn nhóm + tìm kiếm client-side */
+const PRICE_COLS = [
+  { key: "donGiaThietThach", label: "Thiết Thạch" },
+  { key: "donGiaCatNghi", label: "Cát Nghi" },
+  { key: "donGiaGoiChuan", label: "Gói chuẩn" },
+  { key: "donGiaThamKhao", label: "Tham khảo" },
+] as const;
+
+type SortKey = "tenVatTu" | (typeof PRICE_COLS)[number]["key"];
+type SortDir = "asc" | "desc";
+
+/** Giá thấp nhất trong 4 cột giá của 1 dòng (bỏ qua null) — để tô nổi khi so sánh */
+function cheapestKey(i: CatalogRow): string | null {
+  let best: string | null = null;
+  let bestVal = Infinity;
+  for (const c of PRICE_COLS) {
+    const v = i[c.key];
+    if (v != null && v < bestVal) {
+      bestVal = v;
+      best = c.key;
+    }
+  }
+  return best;
+}
+
+/** Danh mục vật tư tham khảo (130 vật tư chuẩn) — lọc nhóm/xuất xứ/nguồn mua, tìm kiếm, sắp xếp theo giá, tô nổi giá rẻ nhất để so sánh */
 export function CatalogBrowser({ items }: { items: CatalogRow[] }) {
   const [q, setQ] = useState("");
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [originFilter, setOriginFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("tenVatTu");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const allGroups = [...new Set(items.map((i) => i.tenNhomVatTu))];
+  const allOrigins = [...new Set(items.map((i) => i.xuatXu).filter((x): x is string => !!x))].sort();
+  const allSources = [...new Set(items.map((i) => i.nguonMuaMacDinh))];
 
   const query = q.trim().toLowerCase();
-  const bySearch = query
+  let filtered = query
     ? items.filter(
         (i) => i.tenVatTu.toLowerCase().includes(query) || i.maVatTu.toLowerCase().includes(query),
       )
     : items;
-  const filtered = selectedGroup ? bySearch.filter((i) => i.tenNhomVatTu === selectedGroup) : bySearch;
-  const groups = selectedGroup ? [selectedGroup] : [...new Set(filtered.map((i) => i.tenNhomVatTu))];
+  if (selectedGroup) filtered = filtered.filter((i) => i.tenNhomVatTu === selectedGroup);
+  if (originFilter) filtered = filtered.filter((i) => i.xuatXu === originFilter);
+  if (sourceFilter) filtered = filtered.filter((i) => i.nguonMuaMacDinh === sourceFilter);
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortKey === "tenVatTu") {
+      // Chỉ định rõ locale "vi" — nếu để mặc định, Node (SSR) và trình duyệt (hydrate) có thể trả về
+      // locale mặc định khác nhau, khiến thứ tự sắp xếp lệch nhau và gây lỗi hydration mismatch.
+      const cmp = a.tenVatTu.localeCompare(b.tenVatTu, "vi");
+      return sortDir === "asc" ? cmp : -cmp;
+    }
+    const av = a[sortKey];
+    const bv = b[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1; // giá trống luôn xếp cuối bất kể chiều sắp xếp
+    if (bv == null) return -1;
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+
+  const groups = selectedGroup ? [selectedGroup] : [...new Set(sorted.map((i) => i.tenNhomVatTu))];
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir(sortDir === "asc" ? "desc" : "asc");
+    else {
+      setSortKey(key);
+      setSortDir(key === "tenVatTu" ? "asc" : "asc");
+    }
+  };
+
+  const sortArrow = (key: SortKey) => (sortKey === key ? (sortDir === "asc" ? " ▲" : " ▼") : "");
 
   return (
     <div className="space-y-3">
@@ -678,12 +752,53 @@ export function CatalogBrowser({ items }: { items: CatalogRow[] }) {
           );
         })}
       </div>
-      <Input
-        placeholder="Tìm theo tên hoặc mã vật tư..."
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        className="max-w-xs"
-      />
+
+      <div className="flex flex-wrap gap-2 items-center">
+        <Input
+          placeholder="Tìm theo tên hoặc mã vật tư..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="max-w-xs"
+        />
+        <Select value={originFilter} onChange={(e) => setOriginFilter(e.target.value)} className="!w-auto">
+          <option value="">Tất cả xuất xứ</option>
+          {allOrigins.map((o) => <option key={o} value={o}>{o}</option>)}
+        </Select>
+        <Select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="!w-auto">
+          <option value="">Tất cả nguồn mua</option>
+          {allSources.map((s) => <option key={s} value={s}>{VT_NGUON_MUA_MAC_DINH[s] ?? s}</option>)}
+        </Select>
+        <Select
+          value={sortKey}
+          onChange={(e) => { setSortKey(e.target.value as SortKey); setSortDir("asc"); }}
+          className="!w-auto"
+        >
+          <option value="tenVatTu">Sắp xếp: Tên vật tư</option>
+          {PRICE_COLS.map((c) => <option key={c.key} value={c.key}>Sắp xếp: Giá {c.label}</option>)}
+        </Select>
+        <button
+          type="button"
+          onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+          className="text-[12px] font-semibold px-2.5 py-1 rounded-lg border border-line text-ink-2 hover:bg-page"
+          title="Đảo chiều sắp xếp"
+        >
+          {sortDir === "asc" ? "↑ Tăng dần" : "↓ Giảm dần"}
+        </button>
+        {(originFilter || sourceFilter || selectedGroup || q) && (
+          <button
+            type="button"
+            onClick={() => { setOriginFilter(""); setSourceFilter(""); setSelectedGroup(null); setQ(""); }}
+            className="text-[12px] text-critical font-semibold"
+          >
+            Xóa bộ lọc
+          </button>
+        )}
+        <span className="text-xs text-muted ml-auto">
+          <span className="inline-block w-2.5 h-2.5 rounded mr-1 align-[-1px]" style={{ background: "var(--good)" }} />
+          Giá rẻ nhất trong dòng
+        </span>
+      </div>
+
       {groups.length === 0 && <p className="text-sm text-muted">Không tìm thấy vật tư nào khớp.</p>}
       {groups.map((g) => (
         <div key={g}>
@@ -692,35 +807,49 @@ export function CatalogBrowser({ items }: { items: CatalogRow[] }) {
             <table className="w-full">
               <thead>
                 <tr className="text-left text-[11px] text-muted border-b border-grid">
-                  <th className="py-1 pr-2 font-semibold">Vật tư</th>
+                  <th className="py-1 pr-2 font-semibold cursor-pointer select-none" onClick={() => toggleSort("tenVatTu")}>
+                    Vật tư{sortArrow("tenVatTu")}
+                  </th>
                   <th className="py-1 pr-2 font-semibold">ĐVT</th>
-                  <th className="py-1 pr-2 font-semibold">Thiết Thạch</th>
-                  <th className="py-1 pr-2 font-semibold">Cát Nghi</th>
-                  <th className="py-1 pr-2 font-semibold">Gói chuẩn</th>
-                  <th className="py-1 pr-2 font-semibold">Tham khảo</th>
+                  {PRICE_COLS.map((c) => (
+                    <th key={c.key} className="py-1 pr-2 font-semibold cursor-pointer select-none" onClick={() => toggleSort(c.key)}>
+                      {c.label}{sortArrow(c.key)}
+                    </th>
+                  ))}
                   <th className="py-1 font-semibold">Nguồn mua</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered
+                {sorted
                   .filter((i) => i.tenNhomVatTu === g)
-                  .map((i) => (
-                    <tr key={i.id} className="border-b border-grid last:border-0 text-[13px] align-top">
-                      <td className="py-2 pr-2">
-                        <div className="font-medium">{i.tenVatTu}</div>
-                        {i.thuongHieuGoiY && <div className="text-xs text-ink-2">{i.thuongHieuGoiY}</div>}
-                        {i.quyCach && <div className="text-xs text-muted">{i.quyCach}</div>}
-                      </td>
-                      <td className="py-2 pr-2 text-ink-2">{i.donViTinh ?? "—"}</td>
-                      <td className="py-2 pr-2 money">{i.donGiaThietThach ? fmtVND(i.donGiaThietThach) : "—"}</td>
-                      <td className="py-2 pr-2 money">{i.donGiaCatNghi ? fmtVND(i.donGiaCatNghi) : "—"}</td>
-                      <td className="py-2 pr-2 money">{i.donGiaGoiChuan ? fmtVND(i.donGiaGoiChuan) : "—"}</td>
-                      <td className="py-2 pr-2 money font-semibold">
-                        {i.donGiaThamKhao ? fmtVND(i.donGiaThamKhao) : "—"}
-                      </td>
-                      <td className="py-2 text-ink-2">{VT_NGUON_MUA_MAC_DINH[i.nguonMuaMacDinh] ?? i.nguonMuaMacDinh}</td>
-                    </tr>
-                  ))}
+                  .map((i) => {
+                    const cheapest = cheapestKey(i);
+                    return (
+                      <tr key={i.id} className="border-b border-grid last:border-0 text-[13px] align-top">
+                        <td className="py-2 pr-2">
+                          <div className="font-medium">{i.tenVatTu}</div>
+                          {i.thuongHieuGoiY && <div className="text-xs text-ink-2">{i.thuongHieuGoiY}</div>}
+                          {i.quyCach && <div className="text-xs text-muted">{i.quyCach}</div>}
+                          {i.xuatXu && <div className="text-xs text-muted">Xuất xứ: {i.xuatXu}</div>}
+                        </td>
+                        <td className="py-2 pr-2 text-ink-2">{i.donViTinh ?? "—"}</td>
+                        {PRICE_COLS.map((c) => {
+                          const v = i[c.key];
+                          const isCheapest = cheapest === c.key;
+                          return (
+                            <td
+                              key={c.key}
+                              className={`py-2 pr-2 money ${isCheapest ? "font-bold" : ""}`}
+                              style={{ color: isCheapest ? "var(--good)" : undefined }}
+                            >
+                              {v ? fmtVND(v) : "—"}
+                            </td>
+                          );
+                        })}
+                        <td className="py-2 text-ink-2">{VT_NGUON_MUA_MAC_DINH[i.nguonMuaMacDinh] ?? i.nguonMuaMacDinh}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>

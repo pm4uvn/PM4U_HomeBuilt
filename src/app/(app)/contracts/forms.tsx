@@ -25,6 +25,28 @@ const opts = (m: Record<string, string>) =>
     <option key={v} value={v}>{l}</option>
   ));
 
+/**
+ * Options milestone nhóm theo giai đoạn (optgroup) — nhiều mốc trùng TÊN ở khác giai đoạn (VD
+ * "3. Thi công sàn lầu 02" xuất hiện cả ở "II. Thi công phần thân" lẫn "III. Thi công hoàn thiện",
+ * 2 mốc khác nhau) nên nếu chỉ hiện tên suông sẽ nhìn như trùng lặp — thêm tên giai đoạn để phân biệt.
+ */
+function milestoneOptionGroups(milestones: { id: string; name: string; phaseName?: string }[]) {
+  const groups: { phaseName: string; items: { id: string; name: string }[] }[] = [];
+  for (const m of milestones) {
+    const phaseName = m.phaseName ?? "";
+    let group = groups.find((g) => g.phaseName === phaseName);
+    if (!group) { group = { phaseName, items: [] }; groups.push(group); }
+    group.items.push(m);
+  }
+  return groups.map((g) => (
+    <optgroup key={g.phaseName} label={g.phaseName || "Khác"}>
+      {g.items.map((m) => (
+        <option key={m.id} value={m.id}>{m.name}</option>
+      ))}
+    </optgroup>
+  ));
+}
+
 function SubmitRow({ label = "Lưu" }: { label?: string }) {
   return (
     <div className="pt-2">
@@ -513,7 +535,7 @@ export function AddStageForm({
   vatRate: number;
   nextStageNo: number;
   existingPercentTotal: number;
-  milestones: { id: string; name: string }[];
+  milestones: { id: string; name: string; phaseName?: string }[];
 }) {
   const [mode, setMode] = useState<StageAmountMode>("percent");
   const [percentInput, setPercentInput] = useState("");
@@ -556,9 +578,7 @@ export function AddStageForm({
           <Field label="Milestone kích hoạt (nghiệm thu xong mới tới hạn)">
             <Select name="triggerMilestoneId" defaultValue="">
               <option value="">— Không (tới hạn ngay, vd đợt ký HĐ) —</option>
-              {milestones.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
+              {milestoneOptionGroups(milestones)}
             </Select>
           </Field>
           <Field label="Hạn thanh toán sau nghiệm thu (ngày)">
@@ -591,7 +611,7 @@ export function EditStageForm({
   contractValue: number;
   vatRate: number;
   otherStagesPercentTotal: number;
-  milestones: { id: string; name: string }[];
+  milestones: { id: string; name: string; phaseName?: string }[];
   bankAccounts: { id: string; nickname: string; bankName: string; accountNumber: string }[];
 }) {
   const router = useRouter();
@@ -635,9 +655,7 @@ export function EditStageForm({
           <Field label="Milestone kích hoạt (nghiệm thu xong mới tới hạn)">
             <Select name="triggerMilestoneId" defaultValue={stage.triggerMilestoneId ?? ""}>
               <option value="">— Không (tới hạn ngay, vd đợt ký HĐ) —</option>
-              {milestones.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
+              {milestoneOptionGroups(milestones)}
             </Select>
           </Field>
           <Field label="Hạn thanh toán sau nghiệm thu (ngày)">

@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject, type GanttPhase } from "@/services/dashboard.service";
 import { resolveExpiredHoldPoints } from "@/services/milestone.service";
+import { getSignedUrl } from "@/lib/storage";
 import { Card, EmptyState } from "@/components/ui";
 import { GanttChart } from "@/components/dashboard";
 import {
@@ -10,7 +11,7 @@ import {
 } from "./forms";
 import { ScheduleTabs } from "./ScheduleTabs";
 import { PlanModeToggle } from "./PlanModeToggle";
-import { DetailGantt, type DetailGanttPhase } from "./DetailGantt";
+import { DetailGantt, type DetailGanttPhase, type DependencyEdge } from "./DetailGantt";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,7 @@ export default async function SchedulePage() {
   // Compute-on-read: quá 48h chưa xác nhận -> tự động thông qua
   await resolveExpiredHoldPoints(project.id);
 
-  const [phases, checklistTemplates, stakeholders, contracts] = await Promise.all([
+  const [phases, checklistTemplates, stakeholders, contracts, dependencies] = await Promise.all([
     prisma.phase.findMany({
       where: { projectId: project.id },
       orderBy: { sortOrder: "asc" },
@@ -36,7 +37,8 @@ export default async function SchedulePage() {
           include: {
             inspections: { orderBy: { confirmedAt: "desc" }, take: 1 },
             checklistItems: { orderBy: { sortOrder: "asc" } },
-            tasks: { orderBy: { sortOrder: "asc" } },
+            tasks: { orderBy: { sortOrder: "asc" }, include: { documents: true } },
+            documents: true,
           },
         },
       },
@@ -48,7 +50,72 @@ export default async function SchedulePage() {
     }),
     prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
     prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } } }),
+    prisma.taskDependency.findMany({ where: { projectId: project.id } }),
   ]);
+
+  // Tra tên hiển thị cho mốc/việc theo id (dùng cho danh sách "Phụ thuộc vào") — gộp cả 2 cấp WBS
+  const nameById = new Map<string, string>();
+  for (const p of phases) {
+    for (const m of p.milestones) {
+      nameById.set(m.id, m.name);
+      for (const t of m.tasks) nameById.set(t.id, t.name);
+    }
+  }
+  const dependsOnBysuccessor = new Map<string, string[]>();
+  for (const dep of dependencies) {
+    const predName = nameById.get(dep.predecessorId);
+    if (!predName) continue;
+    const list = dependsOnBysuccessor.get(dep.successorId) ?? [];
+    list.push(predName);
+    dependsOnBysuccessor.set(dep.successorId, list);
+  }
+  // Ảnh công trường + ghi âm giọng nói (docType SITE_PHOTO/VOICE_NOTE) gắn vào công việc WBS/mốc —
+  // tạo signed URL (bucket private) cho mọi file đang có, tách riêng 2 map theo loại.
+  type DocRef = { id: string; docType: string; fileUrl: string; title: string };
+  async function resolveDocs(docs: DocRef[]) {
+    const urls = await Promise.all(docs.map((doc) => getSignedUrl(doc.fileUrl)));
+    const resolved = docs.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title, docType: doc.docType })).filter((d) => d.url);
+    return {
+      photos: resolved.filter((d) => d.docType === "SITE_PHOTO"),
+      voiceNotes: resolved.filter((d) => d.docType === "VOICE_NOTE"),
+    };
+  }
+
+  const photosByTaskId = new Map<string, { id: string; url: string; title: string }[]>();
+  const voiceNotesByTaskId = new Map<string, { id: string; url: string; title: string }[]>();
+  await Promise.all(
+    phases.flatMap((p) =>
+      p.milestones.flatMap((m) =>
+        m.tasks.map(async (t) => {
+          const { photos, voiceNotes } = await resolveDocs(t.documents);
+          photosByTaskId.set(t.id, photos);
+          voiceNotesByTaskId.set(t.id, voiceNotes);
+        }),
+      ),
+    ),
+  );
+
+  // Ảnh/ghi âm gắn thẳng vào mốc (không qua WBS con) — dùng cho mốc chưa có việc con nào
+  const photosByMilestoneId = new Map<string, { id: string; url: string; title: string }[]>();
+  const voiceNotesByMilestoneId = new Map<string, { id: string; url: string; title: string }[]>();
+  await Promise.all(
+    phases.flatMap((p) =>
+      p.milestones.map(async (m) => {
+        const { photos, voiceNotes } = await resolveDocs(m.documents);
+        photosByMilestoneId.set(m.id, photos);
+        voiceNotesByMilestoneId.set(m.id, voiceNotes);
+      }),
+    ),
+  );
+
+  const dependencyEdges: DependencyEdge[] = dependencies
+    .filter((d) => nameById.has(d.predecessorId) && nameById.has(d.successorId))
+    .map((d) => ({
+      predType: d.predecessorType as "MILESTONE" | "MILESTONE_TASK",
+      predId: d.predecessorId,
+      succType: d.successorType as "MILESTONE" | "MILESTONE_TASK",
+      succId: d.successorId,
+    }));
   const templatesForForms = checklistTemplates.map((t) => ({
     category: t.category,
     items: t.items.map((i) => i.label),
@@ -93,9 +160,13 @@ export default async function SchedulePage() {
       isHoldPoint: m.isHoldPoint,
       status: m.status,
       plannedDate: toIso(m.plannedDate),
+      responsible: m.responsible,
+      percentComplete: m.percentComplete,
+      dependsOn: dependsOnBysuccessor.get(m.id),
       tasks: m.tasks.map((t) => ({
         id: t.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, isDone: t.isDone,
         dueDate: toIso(t.dueDate), percentComplete: t.percentComplete,
+        dependsOn: dependsOnBysuccessor.get(t.id),
       })),
     })),
   }));
@@ -122,7 +193,7 @@ export default async function SchedulePage() {
       ) : (
         <PlanModeToggle
           master={<GanttChart phases={ganttPhases} />}
-          detailGantt={<DetailGantt phases={detailGanttPhases} picOptions={ganttPicOptions} />}
+          detailGantt={<DetailGantt phases={detailGanttPhases} picOptions={ganttPicOptions} dependencyEdges={dependencyEdges} />}
           detail={
             <>
               {phases.map((phase) => (
@@ -130,6 +201,7 @@ export default async function SchedulePage() {
                   key={phase.id}
                   now={now}
                   templates={templatesForForms}
+                  projectId={project.id}
                   phase={{
                     id: phase.id,
                     sortOrder: phase.sortOrder,
@@ -156,9 +228,13 @@ export default async function SchedulePage() {
                           }
                         : null,
                       checklistItems: m.checklistItems.map((c) => ({ id: c.id, label: c.label, isChecked: c.isChecked })),
+                      photos: photosByMilestoneId.get(m.id) ?? [],
+                      voiceNotes: voiceNotesByMilestoneId.get(m.id) ?? [],
                       tasks: m.tasks.map((t) => ({
                         id: t.id, name: t.name, durationDays: t.durationDays, responsible: t.responsible, isDone: t.isDone,
                         dueDate: toIso(t.dueDate), percentComplete: t.percentComplete,
+                        photos: photosByTaskId.get(t.id) ?? [],
+                        voiceNotes: voiceNotesByTaskId.get(t.id) ?? [],
                       })),
                     })),
                   }}

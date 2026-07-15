@@ -161,13 +161,14 @@ const ALERT_HREF: Record<string, string> = {
   UNDERGROUND_OBSTACLE: "/risks",
   CONTRACT_DEADLINE_NEAR: "/contracts",
   PRECONSTRUCTION_RISK: "/risks",
+  WARRANTY_EXPIRING: "/defects",
 };
 const ALERT_ICON: Record<string, string> = {
   PAYMENT_DUE: "💰", PAYMENT_OVERDUE: "🚨",
   HOLD_POINT_REQUESTED: "⛔", HOLD_POINT_EXPIRING: "⏰",
   IDLE_PENALTY_RUNNING: "🛑", PILE_VARIANCE: "📏",
   BUDGET_OVERRUN: "📈", UNDERGROUND_OBSTACLE: "⚠️", CONTRACT_DEADLINE_NEAR: "📅",
-  PRECONSTRUCTION_RISK: "🚧",
+  PRECONSTRUCTION_RISK: "🚧", WARRANTY_EXPIRING: "🔧",
 };
 
 export async function getDashboardData(projectId: string): Promise<DashboardData> {

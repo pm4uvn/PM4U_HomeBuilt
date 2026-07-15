@@ -13,10 +13,11 @@
  * Bộ lọc "Xem theo" thu hẹp trục thời gian về 1 khoảng cụ thể (tuần/tháng/N tháng tới) — mốc
  * nào không giao với khoảng đang xem thì ẩn hẳn hàng, thanh nào tràn ra ngoài thì bị cắt gọn.
  */
-import { useState, useTransition } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { Card, EmptyState } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { updateMilestoneTaskFields } from "./actions";
+import { updateMilestoneTaskFields, updateMilestoneFields } from "./actions";
 
 export type DetailGanttTask = {
   id: string;
@@ -26,6 +27,7 @@ export type DetailGanttTask = {
   isDone: boolean;
   dueDate: string | null;
   percentComplete: number;
+  dependsOn?: string[];
 };
 
 export type DetailGanttMilestone = {
@@ -34,7 +36,10 @@ export type DetailGanttMilestone = {
   isHoldPoint: boolean;
   status: string;
   plannedDate: string | null;
+  responsible: string | null;
+  percentComplete: number | null;
   tasks: DetailGanttTask[];
+  dependsOn?: string[];
 };
 
 export type DetailGanttPhase = {
@@ -45,6 +50,17 @@ export type DetailGanttPhase = {
   plannedEnd: string | null;
   progressPct: number;
   milestones: DetailGanttMilestone[];
+};
+
+// Mảng rỗng dùng chung làm default param — tránh tạo literal [] mới mỗi lần render, vì [] mới sẽ
+// luôn "khác" mảng cũ về reference, khiến useEffect có nó trong dependency-array chạy lặp vô hạn.
+const EMPTY_ARR: never[] = [];
+
+export type DependencyEdge = {
+  predType: "MILESTONE" | "MILESTONE_TASK";
+  predId: string;
+  succType: "MILESTONE" | "MILESTONE_TASK";
+  succId: string;
 };
 
 /** Mốc đầu mỗi tháng trong [min, max] làm trục thời gian — cùng logic với Gantt tổng quan */
@@ -146,9 +162,9 @@ function getWindow(key: RangeKey, now: Date): { start: Date; end: Date } | null 
 }
 
 /** Cột: nhãn | thanh Gantt | hạn | PIC | % — dùng chung cho mọi hàng để track thanh luôn thẳng nhau */
-const GRID_COLS = "grid-cols-[300px_1fr_104px_92px_50px] max-sm:grid-cols-[160px_1fr]";
-const EXTRA_COLS = "max-sm:hidden text-[11px] text-muted truncate";
-const EDIT_INPUT = "w-full bg-transparent text-[11px] text-ink-2 border border-transparent rounded px-0.5 hover:border-line focus:border-brand outline-none truncate";
+const GRID_COLS = "grid-cols-[300px_1fr_92px_92px_88px_50px] max-sm:grid-cols-[160px_1fr]";
+const EXTRA_COLS = "max-sm:hidden text-[12px] text-muted truncate";
+const EDIT_INPUT = "w-full bg-transparent text-[12px] text-ink-2 border border-transparent rounded px-0.5 hover:border-line focus:border-brand outline-none truncate";
 
 function TicksLayer({ ticks }: { ticks: { pos: number; label: string }[] }) {
   return (
@@ -168,33 +184,60 @@ function TodayLine({ pos }: { pos: number }) {
  * 1 hàng việc WBS khi mốc được xổ ra — Hạn/PIC/% sửa trực tiếp (click-to-edit), tự lưu DB.
  * Giữ state cục bộ để gõ mượt, gọi server action lúc onBlur/onChange rồi revalidate từ server.
  */
+/** Dòng phụ nhỏ "⛓ Phụ thuộc: X, Y" hiện dưới tên mốc/việc khi có predecessor — chỉ hiển thị, không sửa được ở đây */
+function DependsOnLine({ names }: { names?: string[] }) {
+  if (!names || names.length === 0) return null;
+  return (
+    <div className="text-[11px] text-muted italic truncate" title={`Phụ thuộc: ${names.join(", ")}`}>
+      ⛓ Phụ thuộc: {names.join(", ")}
+    </div>
+  );
+}
+
 function TaskRow({
-  t, taskLeft, taskWidth, ticks, todayPos, fallbackDue, now,
+  t, taskLeft, taskWidth, ticks, todayPos, fallbackDue, now, barRef, isSelected, isRelated, onSelect,
 }: {
   t: DetailGanttTask; taskLeft: number; taskWidth: number;
   ticks: { pos: number; label: string }[]; todayPos: number; fallbackDue: Date; now: number;
+  barRef?: (el: HTMLDivElement | null) => void;
+  isSelected?: boolean; isRelated?: boolean; onSelect?: () => void;
 }) {
   const [, startTransition] = useTransition();
   const [due, setDue] = useState(t.dueDate ? t.dueDate.slice(0, 10) : "");
   const [pic, setPic] = useState(t.responsible ?? "");
+  const [picTouched, setPicTouched] = useState(false);
   const [pct, setPct] = useState(t.percentComplete);
 
   const effectiveDue = due ? new Date(due) : fallbackDue;
   const isDone = pct >= 100;
   const isLate = !isDone && effectiveDue.getTime() < now;
+  const [start, setStart] = useState(() => new Date(effectiveDue.getTime() - t.durationDays * 86_400_000).toISOString().slice(0, 10));
 
   return (
-    <div className={`grid ${GRID_COLS} gap-2.5 items-start py-[2px]`}>
+    <div
+      className={`grid ${GRID_COLS} gap-2.5 items-start py-1`}
+      style={{
+        background: isSelected
+          ? "color-mix(in srgb, var(--series-1) 22%, transparent)"
+          : isRelated
+            ? "color-mix(in srgb, var(--series-1) 10%, transparent)"
+            : undefined,
+      }}
+    >
       <div
-        className="flex items-start gap-1 text-[11px] pl-8 leading-snug"
+        className="flex items-start gap-1 text-[12px] pl-8 leading-snug cursor-pointer"
         style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : "var(--text-muted)" }}
         title={isLate ? `${t.name} · quá hạn` : isDone ? `${t.name} · ✓ xong` : t.name}
+        onClick={onSelect}
       >
-        {isLate && "⚠️ "}
-        {isDone && !isLate && "✓ "}
-        <span className={isDone ? "line-through" : ""}>{t.name}</span>
+        <div className="min-w-0">
+          {isLate && "⚠️ "}
+          {isDone && !isLate && "✓ "}
+          <span className={isDone ? "line-through" : ""}>{t.name}</span>
+          <DependsOnLine names={t.dependsOn} />
+        </div>
       </div>
-      <div className="relative h-2.5 rounded bg-grid overflow-visible">
+      <div ref={barRef} className="relative h-3 rounded bg-grid overflow-visible">
         <TicksLayer ticks={ticks} />
         <div
           className="absolute inset-y-0 rounded-sm"
@@ -214,6 +257,21 @@ function TaskRow({
         )}
         <TodayLine pos={todayPos} />
       </div>
+      {/* Bắt đầu không có field riêng trong DB (MilestoneTask chỉ lưu dueDate + durationDays) — sửa
+          ngày bắt đầu thực chất là ghi lại durationDays = Hạn - Bắt đầu, giữ nguyên Hạn đã chọn. */}
+      <input
+        type="date"
+        className={EDIT_INPUT}
+        value={start}
+        title="Bắt đầu (suy ra số ngày dự kiến = Hạn − Bắt đầu)"
+        onChange={(e) => {
+          setStart(e.target.value);
+          if (!e.target.value || !isSaneDate(e.target.value)) return;
+          const newStart = new Date(e.target.value);
+          const days = Math.max(1, Math.round((effectiveDue.getTime() - newStart.getTime()) / 86_400_000));
+          startTransition(() => { void updateMilestoneTaskFields(t.id, { durationDays: days }); });
+        }}
+      />
       <input
         type="date"
         className={EDIT_INPUT}
@@ -234,8 +292,10 @@ function TaskRow({
         className={EDIT_INPUT}
         value={pic}
         placeholder="—"
-        onChange={(e) => setPic(e.target.value)}
+        onFocus={() => { setPic(""); setPicTouched(false); }} // xóa tạm để datalist hiện đủ danh sách thay vì lọc theo tên đang có sẵn
+        onChange={(e) => { setPic(e.target.value); setPicTouched(true); }}
         onBlur={() => {
+          if (!picTouched) { setPic(t.responsible ?? ""); return; } // chỉ bấm vào rồi bấm ra, chưa chọn/gõ gì -> khôi phục, không lưu rỗng
           if (pic !== (t.responsible ?? "")) startTransition(() => { void updateMilestoneTaskFields(t.id, { responsible: pic }); });
         }}
       />
@@ -255,15 +315,183 @@ function TaskRow({
   );
 }
 
-export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPhase[]; picOptions?: string[] }) {
+/**
+ * 3 ô Bắt đầu/Hạn/PIC/% ở hàng mốc — Hạn luôn sửa được trực tiếp (đổi thì tự dời lịch dây chuyền
+ * qua updateMilestoneFields). PIC/% chỉ sửa tay được khi mốc CHƯA có WBS con (hasTasks=false) — có
+ * WBS rồi thì 2 giá trị này PHẢI gộp tự động từ WBS (msPic/msPct truyền vào), sửa tay sẽ lệch nguồn
+ * dữ liệu nên chỉ hiện dạng chữ, không cho sửa.
+ */
+function MilestoneEditCells({
+  m, startIso, hasTasks, msPic, msPct, isDone,
+}: {
+  m: DetailGanttMilestone; startIso: string; hasTasks: boolean; msPic: string; msPct: number; isDone: boolean;
+}) {
+  const [, startTransition] = useTransition();
+  const [due, setDue] = useState(m.plannedDate ? m.plannedDate.slice(0, 10) : "");
+  const [pic, setPic] = useState(m.responsible ?? "");
+  const [picTouched, setPicTouched] = useState(false);
+  const [pct, setPct] = useState(m.percentComplete ?? 0);
+  const isLate = !isDone && !!due && new Date(due).getTime() < Date.now();
+
+  return (
+    <>
+      <span className={EXTRA_COLS} title={fmtDate(startIso)}>{fmtShort(startIso)}</span>
+      <input
+        type="date"
+        className={EDIT_INPUT}
+        value={due}
+        title={isLate ? "Quá hạn" : undefined}
+        style={{ color: isLate ? "var(--critical)" : undefined, borderColor: isLate ? "var(--critical)" : undefined }}
+        onChange={(e) => {
+          setDue(e.target.value);
+          if (e.target.value && !isSaneDate(e.target.value)) return;
+          startTransition(() => { void updateMilestoneFields(m.id, { plannedDate: e.target.value || null }); });
+        }}
+      />
+      {hasTasks ? (
+        <span className={EXTRA_COLS} title={msPic}>{msPic}</span>
+      ) : (
+        <input
+          type="text"
+          list="detail-gantt-pic-options"
+          className={EDIT_INPUT}
+          value={pic}
+          placeholder="—"
+          onFocus={() => { setPic(""); setPicTouched(false); }}
+          onChange={(e) => { setPic(e.target.value); setPicTouched(true); }}
+          onBlur={() => {
+            if (!picTouched) { setPic(m.responsible ?? ""); return; }
+            if (pic !== (m.responsible ?? "")) startTransition(() => { void updateMilestoneFields(m.id, { responsible: pic }); });
+          }}
+        />
+      )}
+      {hasTasks ? (
+        <span className={EXTRA_COLS} style={{ color: msPct >= 100 ? "var(--good)" : undefined }}>{msPct}%</span>
+      ) : (
+        <input
+          type="number"
+          min={0}
+          max={100}
+          className={EDIT_INPUT}
+          style={{ color: pct >= 100 ? "var(--good)" : undefined }}
+          value={pct}
+          onChange={(e) => setPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+          onBlur={() => {
+            if (pct !== (m.percentComplete ?? 0)) startTransition(() => { void updateMilestoneFields(m.id, { percentComplete: pct }); });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export function DetailGantt({
+  phases, picOptions = EMPTY_ARR, dependencyEdges = EMPTY_ARR,
+}: {
+  phases: DetailGanttPhase[]; picOptions?: string[]; dependencyEdges?: DependencyEdge[];
+}) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
-  const [rangeKey, setRangeKey] = useState<RangeKey>("all");
+  // Mặc định "Tháng này" thay vì "Tất cả" — xem toàn bộ ~30 mốc 1 lúc luôn dài hơn 1 màn hình, phải
+  // cuộn trang; thu hẹp theo tháng cho vừa màn hình hơn, người dùng vẫn bấm "Tất cả" khi cần xem hết.
+  const [rangeKey, setRangeKey] = useState<RangeKey>("month");
+  const [fullscreen, setFullscreen] = useState(false);
+  // "Toàn màn hình" dùng Fullscreen API thật (không chỉ CSS position:fixed) — nếu trang đang được
+  // xem trong 1 khung xem trước/iframe cỡ cố định (VD panel preview trong IDE), CSS fixed chỉ phủ
+  // đúng khung đó chứ không chiếm được toàn màn hình vật lý; requestFullscreen() mới thoát hẳn ra được.
+  const portalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onFsChange() {
+      if (!document.fullscreenElement) setFullscreen(false);
+    }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  useEffect(() => {
+    if (fullscreen && portalRef.current && document.fullscreenElement !== portalRef.current) {
+      portalRef.current.requestFullscreen?.().catch(() => {});
+    }
+    if (!fullscreen && document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, [fullscreen]);
   const toggle = (id: string) =>
     setOpenIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+
+  // Bấm vào 1 mốc/công việc -> tô sáng các mốc/công việc phụ thuộc trực tiếp (1 nấc, cả 2 chiều)
+  // và chỉ vẽ mũi tên cho đúng các quan hệ đó — tránh rối mắt khi hiện hết 38 mũi tên cùng lúc.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const relatedKeys = (() => {
+    if (!selectedKey) return null;
+    const related = new Set<string>([selectedKey]);
+    for (const e of dependencyEdges) {
+      const pk = `${e.predType}:${e.predId}`;
+      const sk = `${e.succType}:${e.succId}`;
+      if (pk === selectedKey) related.add(sk);
+      if (sk === selectedKey) related.add(pk);
+    }
+    return related;
+  })();
+  // useMemo bắt buộc: .filter() luôn tạo mảng mới mỗi lần render, nếu không nhớ lại reference thì
+  // useLayoutEffect bên dưới (có selectableEdges trong dependency-array) sẽ lặp vô hạn y hệt lỗi trước.
+  const selectableEdges = useMemo(
+    () =>
+      selectedKey
+        ? dependencyEdges.filter((e) => `${e.predType}:${e.predId}` === selectedKey || `${e.succType}:${e.succId}` === selectedKey)
+        : EMPTY_ARR,
+    [selectedKey, dependencyEdges],
+  );
+  const toggleSelect = (key: string) => setSelectedKey((s) => (s === key ? null : key));
+
+  // Đường nối mũi tên dependency: ref chỉ gắn trên track full-width (0-100%) của mỗi hàng — điểm neo
+  // mũi tên phải là mép của THANH MÀU thực tế (theo leftPct/widthPct đã tính riêng cho hàng đó khi
+  // render), không phải mép track, nên lưu kèm leftPct/widthPct cùng lúc với ref.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const barRefs = useRef<Map<string, { el: HTMLDivElement; leftPct: number; widthPct: number }>>(new Map());
+  const registerBarRef = (key: string, el: HTMLDivElement | null, leftPct: number, widthPct: number) => {
+    if (el) barRefs.current.set(key, { el, leftPct, widthPct });
+    else barRefs.current.delete(key);
+  };
+  const [arrows, setArrows] = useState<{ key: string; x1: number; y1: number; x2: number; y2: number }[]>([]);
+  // SVG cần width/height tính bằng số px cụ thể — containerRef có chiều cao "auto" theo nội dung nên
+  // CSS height:100% trên overlay tuyệt đối bên trong sẽ không tự resolve được (spec CSS box percentage).
+  const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
+
+  useLayoutEffect(() => {
+    function recompute() {
+      const cont = containerRef.current;
+      if (!cont) return;
+      const contRect = cont.getBoundingClientRect();
+      setSvgSize({ width: cont.scrollWidth, height: cont.scrollHeight });
+      const next: { key: string; x1: number; y1: number; x2: number; y2: number }[] = [];
+      // Chỉ vẽ mũi tên cho quan hệ liên quan tới mốc/việc đang được bấm chọn (selectableEdges) —
+      // không chọn gì thì không vẽ mũi tên nào cả, tránh rối mắt với hàng chục mũi tên cùng lúc.
+      for (const e of selectableEdges) {
+        const pred = barRefs.current.get(`${e.predType}:${e.predId}`);
+        const succ = barRefs.current.get(`${e.succType}:${e.succId}`);
+        if (!pred || !succ) continue; // hàng đang ẩn (thu gọn WBS / ngoài khoảng lọc) -> bỏ qua mũi tên này
+        const predTrack = pred.el.getBoundingClientRect();
+        const succTrack = succ.el.getBoundingClientRect();
+        next.push({
+          key: `${e.predType}:${e.predId}->${e.succType}:${e.succId}`,
+          x1: predTrack.left - contRect.left + ((pred.leftPct + pred.widthPct) / 100) * predTrack.width,
+          y1: predTrack.top - contRect.top + predTrack.height / 2,
+          x2: succTrack.left - contRect.left + (succ.leftPct / 100) * succTrack.width,
+          y2: succTrack.top - contRect.top + succTrack.height / 2,
+        });
+      }
+      setArrows(next);
+    }
+    recompute();
+    window.addEventListener("resize", recompute);
+    return () => window.removeEventListener("resize", recompute);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phases, openIds, rangeKey, selectableEdges, fullscreen]);
 
   // Trục thời gian chung cho cả dự án: gộp ngày giai đoạn + ngày mốc
   const allDates: number[] = [];
@@ -294,7 +522,7 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
   let anyRowVisible = false;
 
   const rangeButtons = (
-    <div className="inline-flex rounded-lg border border-line overflow-hidden text-[11.5px] mb-2">
+    <div className="inline-flex rounded-lg border border-line overflow-hidden text-[11.5px]">
       {RANGE_OPTIONS.map((r, i) => (
         <button
           key={r.key}
@@ -310,15 +538,61 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
     </div>
   );
 
-  return (
-    <Card title="Gantt chi tiết theo mốc nghiệm thu">
+  const fullscreenButton = (
+    <button
+      type="button"
+      onClick={() => setFullscreen((f) => !f)}
+      className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg border border-line text-ink-2 hover:bg-page shrink-0"
+    >
+      {fullscreen ? "✕ Thoát toàn màn hình" : "⛶ Toàn màn hình"}
+    </button>
+  );
+
+  const body = (
+    <>
       {/* datalist dùng chung cho mọi ô PIC — combobox: gợi ý sẵn nhưng vẫn gõ tên mới được, giống Nhật ký thi công */}
       <datalist id="detail-gantt-pic-options">
         {picOptions.map((p) => <option key={p} value={p} />)}
       </datalist>
-      {rangeButtons}
-      <div className="overflow-x-auto">
-        <div className="min-w-[640px]">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+        {rangeButtons}
+        {fullscreenButton}
+      </div>
+      {/* overflow-y-visible bắt buộc phải khai báo rõ: CSS spec quy định nếu overflow-x khác "visible"
+          mà overflow-y không khai báo, trình duyệt tự đổi overflow-y thành "auto" theo — sinh ra
+          thanh cuộn dọc thừa dù không hề set. */}
+      {/* Toàn màn hình: không giới hạn maxHeight ở đây — để cuộn xảy ra đúng 1 lần ở khung portal
+          ngoài cùng (overflow-y-auto), tránh cảnh 2 lớp scrollbar lồng nhau gây khó chịu. */}
+      <div className={fullscreen ? "overflow-x-auto" : "overflow-x-auto overflow-y-visible"}>
+        <div ref={containerRef} className="relative min-w-[640px]">
+          {arrows.length > 0 && (
+            <svg
+              className="absolute top-0 left-0 pointer-events-none"
+              width={svgSize.width}
+              height={svgSize.height}
+              style={{ overflow: "visible" }}
+            >
+              <defs>
+                <marker id="dep-arrowhead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="var(--series-1)" />
+                </marker>
+              </defs>
+              {arrows.map((a) => {
+                const midX = a.x1 + Math.max(6, (a.x2 - a.x1) / 2);
+                return (
+                  <path
+                    key={a.key}
+                    d={`M${a.x1},${a.y1} L${midX},${a.y1} L${midX},${a.y2} L${a.x2},${a.y2}`}
+                    fill="none"
+                    stroke="var(--series-1)"
+                    strokeWidth={1.25}
+                    strokeOpacity={0.85}
+                    markerEnd="url(#dep-arrowhead)"
+                  />
+                );
+              })}
+            </svg>
+          )}
           {/* Trục tháng */}
           <div className={`grid ${GRID_COLS} gap-2.5 text-[11px] text-muted pb-1 border-b border-grid mb-1`}>
             <span>Giai đoạn / Mốc nghiệm thu</span>
@@ -329,6 +603,7 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                 </span>
               ))}
             </div>
+            <span className="max-sm:hidden">Bắt đầu</span>
             <span className="max-sm:hidden">Hạn</span>
             <span className="max-sm:hidden">PIC</span>
             <span className="max-sm:hidden">%</span>
@@ -390,6 +665,7 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                     })()}
                     <TodayLine pos={todayPos} />
                   </div>
+                  <span className={EXTRA_COLS}>{fmtShort(phase.plannedStart)}</span>
                   <span className={EXTRA_COLS}>{fmtShort(phase.plannedEnd)}</span>
                   <span className={EXTRA_COLS}></span>
                   <span className={EXTRA_COLS} style={{ color: phase.progressPct >= 100 ? "var(--good)" : undefined }}>{phase.progressPct}%</span>
@@ -411,22 +687,38 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                   const statusDone = DONE_STATUSES.includes(m.status);
                   const msPct = hasTasks
                     ? Math.round(m.tasks.reduce((s, t) => s + t.percentComplete, 0) / m.tasks.length)
-                    : statusDone
-                      ? 100
-                      : 0;
+                    : (m.percentComplete ?? (statusDone ? 100 : 0));
                   // Đã xong nếu nghiệm thu đạt HOẶC toàn bộ WBS con đã 100% — không báo quá hạn khi đã xong
                   const isDone = statusDone || msPct >= 100;
                   const isLate = !isDone && +new Date(m.plannedDate!) < now;
-                  const msPic = hasTasks ? summarizePic(m.tasks) : "—";
+                  const msPic = hasTasks ? summarizePic(m.tasks) : (m.responsible ?? "—");
+                  const mKey = `MILESTONE:${m.id}`;
+                  const isSelected = selectedKey === mKey;
+                  const isRelated = !isSelected && (relatedKeys?.has(mKey) ?? false);
 
                   return (
-                    <div key={m.id}>
-                      <div className={`grid ${GRID_COLS} gap-2.5 items-start py-[3px]`}>
-                        <div className="flex items-start gap-1 text-[12px] text-ink-2 pl-2 leading-snug" title={m.name}>
+                    <div
+                      key={`${m.id}-${m.plannedDate}-${m.responsible}-${m.percentComplete}`}
+                      style={{
+                        background: isSelected
+                          ? "color-mix(in srgb, var(--series-1) 22%, transparent)"
+                          : isRelated
+                            ? "color-mix(in srgb, var(--series-1) 10%, transparent)"
+                            : idx % 2 === 1
+                              ? "var(--page)"
+                              : undefined,
+                      }}
+                    >
+                      <div className={`grid ${GRID_COLS} gap-2.5 items-start py-1.5`}>
+                        <div
+                          className="flex items-start gap-1 text-[13px] text-ink-2 pl-2 leading-snug cursor-pointer"
+                          title={m.name}
+                          onClick={() => toggleSelect(mKey)}
+                        >
                           {hasTasks ? (
                             <button
                               type="button"
-                              onClick={() => toggle(m.id)}
+                              onClick={(e) => { e.stopPropagation(); toggle(m.id); }}
                               className="text-muted shrink-0 w-3.5 text-center"
                               title={open ? "Thu gọn WBS" : `Xổ ${m.tasks.length} công việc`}
                             >
@@ -435,14 +727,17 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                           ) : (
                             <span className="w-3.5 shrink-0" />
                           )}
-                          {m.isHoldPoint && "⛔ "}
-                          {isLate && "⚠️ "}
-                          <span style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : undefined }}>{m.name}</span>
-                          {hasTasks && (
-                            <span className="text-muted shrink-0 text-[10px]">({doneCount}/{m.tasks.length})</span>
-                          )}
+                          <div className="min-w-0">
+                            {m.isHoldPoint && "⛔ "}
+                            {isLate && "⚠️ "}
+                            <span style={{ color: isLate ? "var(--critical)" : isDone ? "var(--good)" : undefined }}>{m.name}</span>
+                            {hasTasks && (
+                              <span className="text-muted shrink-0 text-[11px]"> ({doneCount}/{m.tasks.length})</span>
+                            )}
+                            <DependsOnLine names={m.dependsOn} />
+                          </div>
                         </div>
-                        <div className="relative h-3 rounded bg-grid overflow-visible">
+                        <div ref={(el) => registerBarRef(`MILESTONE:${m.id}`, el, start, width)} className="relative h-3.5 rounded bg-grid overflow-visible">
                           <TicksLayer ticks={ticks} />
                           {/* Ke nối dependency: mốc này bắt đầu nơi mốc trước kết thúc */}
                           {idx > 0 && (
@@ -492,11 +787,7 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                             ))}
                           <TodayLine pos={todayPos} />
                         </div>
-                        <span className={EXTRA_COLS} style={{ color: isLate ? "var(--critical)" : undefined }} title={isLate ? "Quá hạn" : fmtDate(m.plannedDate)}>
-                          {isLate && "⚠️ "}{fmtShort(m.plannedDate)}
-                        </span>
-                        <span className={EXTRA_COLS} title={msPic}>{msPic}</span>
-                        <span className={EXTRA_COLS} style={{ color: msPct >= 100 ? "var(--good)" : undefined }}>{msPct}%</span>
+                        <MilestoneEditCells m={m} startIso={startIso} hasTasks={hasTasks} msPic={msPic} msPct={msPct} isDone={isDone} />
                       </div>
 
                       {/* Xổ ra: mỗi công việc WBS 1 hàng riêng, vị trí theo tỷ lệ số ngày trong khoảng của mốc */}
@@ -520,6 +811,10 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
                                 todayPos={todayPos}
                                 fallbackDue={fallbackDue}
                                 now={now}
+                                barRef={(el) => registerBarRef(`MILESTONE_TASK:${t.id}`, el, taskLeft, taskWidth)}
+                                isSelected={selectedKey === `MILESTONE_TASK:${t.id}`}
+                                isRelated={selectedKey !== `MILESTONE_TASK:${t.id}` && (relatedKeys?.has(`MILESTONE_TASK:${t.id}`) ?? false)}
+                                onSelect={() => toggleSelect(`MILESTONE_TASK:${t.id}`)}
                               />
                             );
                           });
@@ -551,6 +846,20 @@ export function DetailGantt({ phases, picOptions = [] }: { phases: DetailGanttPh
           </div>
         </div>
       </div>
-    </Card>
+    </>
   );
+
+  if (fullscreen) {
+    return createPortal(
+      <div ref={portalRef} className="fixed inset-0 z-50 bg-page overflow-y-auto p-4">
+        <div className="bg-surface border border-line rounded-xl p-4">
+          <h2 className="text-[12px] font-semibold uppercase tracking-wider text-muted mb-3">Gantt chi tiết theo mốc nghiệm thu</h2>
+          {body}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
+  return <Card title="Gantt chi tiết theo mốc nghiệm thu">{body}</Card>;
 }

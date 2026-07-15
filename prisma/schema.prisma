@@ -51,6 +51,7 @@ model Project {
   dailyLogs      DailyLog[]
   riskLogs       RiskLog[]
   issueLogs      IssueLog[]
+  defectLogs     DefectLog[]
   neighborSurveys NeighborSurvey[]
   pilingRecords  PilingRecord[]
   documents      Document[]
@@ -60,6 +61,7 @@ model Project {
   checklistTemplates ChecklistTemplate[]
   charter        ProjectCharter?
   stakeholders   Stakeholder[]
+  taskDependencies TaskDependency[]
   createdAt      DateTime @default(now())
 }
 
@@ -251,6 +253,7 @@ model Contract {
   variations      Variation[]
   idleWaitLogs    IdleWaitLog[]
   documents       Document[]
+  defects         DefectLog[] // hạng mục bảo hành thuộc trách nhiệm nhà thầu này
   dailyLogItems   DailyLogItem[] // các việc trong nhật ký gắn trực tiếp với hợp đồng này
 
   @@unique([projectId, code])
@@ -489,6 +492,8 @@ model Milestone {
   name               String  // "Nghiệm thu cốt thép móng", "Nghiệm thu sàn tầng 1"
   isHoldPoint        Boolean @default(false)
   plannedDate        DateTime? // ngày dự kiến nghiệm thu — mốc rõ ràng, không chỉ nằm chung chung trong khoảng ngày giai đoạn
+  responsible        String? // người/đơn vị phụ trách — chỉ dùng khi mốc CHƯA có WBS con (có WBS thì PIC gộp tự động từ WBS)
+  percentComplete    Int? // 0-100, ghi tay thủ công — chỉ dùng khi mốc CHƯA có WBS con (có WBS thì % tự tính trung bình từ WBS)
   confirmDeadlineHrs Int     @default(48) // hạn CĐT xác nhận qua App/Zalo
   requestedAt        DateTime? // thầu gửi yêu cầu nghiệm thu lúc nào (mốc đếm 48h)
   status             MilestoneStatus @default(PENDING)
@@ -499,6 +504,8 @@ model Milestone {
   dailyLogs          DailyLog[] @relation("DailyLogMilestones") // nhật ký công trình các ngày liên quan tới mốc này
   dailyLogItems      DailyLogItem[] // từng việc trong nhật ký gắn trực tiếp với mốc này
   vatTuDuAn          VatTuDuAn[] // vật tư cần hoàn thành trước mốc này (gợi ý ngày chốt/đặt/giao hàng)
+  thietBiDuAn        ThietBiDuAn[] // thiết bị cần hoàn thành trước mốc này (gợi ý ngày chọn model/đặt/giao/lắp đặt)
+  documents          Document[] // ảnh công trường gắn trực tiếp với mốc này (không phụ thuộc có WBS con hay không)
 }
 
 /** 1 đầu việc cần kiểm tra trong checklist nghiệm thu của 1 milestone */
@@ -525,6 +532,7 @@ model MilestoneTask {
   dueDate         DateTime? // hạn tự đặt tay; nếu trống thì Gantt tự suy ra từ durationDays
   percentComplete Int       @default(0) // 0-100, theo dõi tiến độ giữa chừng độc lập với isDone
   sortOrder       Int       @default(0)
+  documents       Document[] // ảnh công trường gắn trực tiếp với công việc này
 }
 
 enum MilestoneStatus {
@@ -533,6 +541,26 @@ enum MilestoneStatus {
   APPROVED            // đạt -> mở khóa bước sau + kích hoạt PaymentStage
   REJECTED            // không đạt, thầu phải khắc phục
   AUTO_APPROVED       // quá 48h CĐT không phản hồi -> tự động thông qua (theo điều khoản HĐ)
+}
+
+/**
+ * Quan hệ phụ thuộc (finish-to-start) giữa 2 mốc/công việc trong tiến độ — mốc/việc sau chỉ nên
+ * bắt đầu sau khi mốc/việc trước hoàn thành. predecessorType/successorType phân biệt Milestone hay
+ * MilestoneTask (2 cấp WBS khác nhau, không dùng FK trực tiếp vì có thể trỏ tới 1 trong 2 bảng —
+ * cùng pattern polymorphic refTable/refId đã dùng ở Alert).
+ */
+model TaskDependency {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  predecessorType String   // "MILESTONE" | "MILESTONE_TASK"
+  predecessorId   String
+  successorType   String   // "MILESTONE" | "MILESTONE_TASK"
+  successorId     String
+  createdAt       DateTime @default(now())
+
+  @@unique([predecessorType, predecessorId, successorType, successorId])
+  @@index([projectId])
 }
 
 model InspectionRecord {
@@ -705,6 +733,74 @@ model IssueActionItem {
   sortOrder Int       @default(0)
 }
 
+/**
+ * Defect & Warranty Log — khiếm khuyết phát hiện lúc nghiệm thu bàn giao (hoặc sau đó, trong thời
+ * hạn bảo hành), khác Issue Log (vấn đề trong lúc thi công): Defect luôn gắn với 1 hạng mục cụ thể
+ * và có thời hạn bảo hành riêng (warrantyStartAt + warrantyMonths -> warrantyEndAt) để nhắc trước
+ * khi hết hạn khiếu nại nhà thầu — giai đoạn hay bị bỏ quên nhất sau khi dự án "xong".
+ */
+model DefectLog {
+  id              String         @id @default(cuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id])
+  category        DefectCategory
+  title           String
+  description     String?
+  severity        DefectSeverity @default(MEDIUM)
+  status          DefectStatus   @default(OPEN)
+  location        String?        // vị trí cụ thể: "WC tầng 2", "Mái sân thượng"...
+  reportedBy      String?
+  owner           String?        // ai chịu trách nhiệm theo dõi/xử lý
+  reportedDate    DateTime       @default(now())
+  dueDate         DateTime?
+  contractId      String?        // nhà thầu chịu trách nhiệm bảo hành hạng mục này
+  contract        Contract?      @relation(fields: [contractId], references: [id])
+  warrantyMonths  Int?           // số tháng bảo hành cam kết cho hạng mục này
+  warrantyStartAt DateTime?      // mặc định = ngày bàn giao, chỉnh được theo từng hạng mục
+  warrantyEndAt   DateTime?      // = warrantyStartAt + warrantyMonths, tính sẵn lúc lưu để dễ truy vấn/cảnh báo
+  resolution      String?
+  resolvedAt      DateTime?
+  documents       Document[]
+  actions         DefectActionItem[]
+  createdAt       DateTime       @default(now())
+}
+
+model DefectActionItem {
+  id        String    @id @default(cuid())
+  defectId  String
+  defect    DefectLog @relation(fields: [defectId], references: [id], onDelete: Cascade)
+  label     String
+  isDone    Boolean   @default(false)
+  doneAt    DateTime?
+  sortOrder Int       @default(0)
+}
+
+enum DefectCategory {
+  WATERPROOFING    // chống thấm
+  ELECTRICAL_MEP   // điện nước
+  FINISHING        // hoàn thiện (sơn, gạch, cửa...)
+  STRUCTURAL       // kết cấu
+  DOOR_WINDOW      // cửa đi/cửa sổ
+  PAINT_WALL       // sơn, tường, trần
+  FLOORING         // sàn, ốp lát
+  ROOFING          // mái, sân thượng
+  OTHER
+}
+
+enum DefectSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DefectStatus {
+  OPEN
+  IN_PROGRESS
+  FIXED
+  CLOSED
+}
+
 enum IssueCategory {
   DESIGN_TECHNICAL
   CONTRACTOR_VENDOR
@@ -870,6 +966,12 @@ model Document {
   penaltyEvent       PenaltyEvent? @relation(fields: [penaltyEventId], references: [id])
   ownerPurchaseItemId String?
   ownerPurchaseItem  OwnerPurchaseItem? @relation(fields: [ownerPurchaseItemId], references: [id])
+  defectId           String?
+  defect             DefectLog? @relation(fields: [defectId], references: [id])
+  milestoneTaskId    String?
+  milestoneTask      MilestoneTask? @relation(fields: [milestoneTaskId], references: [id])
+  milestoneId        String?
+  milestone          Milestone? @relation(fields: [milestoneId], references: [id])
   dailyLogItems      DailyLogItem[] // các việc trong nhật ký gắn trực tiếp với hồ sơ này
 
   uploadedAt DateTime @default(now())
@@ -887,6 +989,7 @@ enum DocType {
   SURVEY_MEDIA       // ảnh/video khảo sát hiện trạng lân cận
   INVOICE
   SITE_PHOTO
+  VOICE_NOTE // ghi âm giọng nói (nhật ký/mốc/công việc) — ghi trực tiếp qua mic trên trình duyệt
   OTHER
 }
 
@@ -942,6 +1045,7 @@ enum AlertType {
   CONTRACT_DEADLINE_NEAR
   BUDGET_OVERRUN         // chi thực tế vượt ngân sách hạng mục
   PRECONSTRUCTION_RISK   // rủi ro từ 7 rule kiểm soát khởi công & nền móng chưa xử lý
+  WARRANTY_EXPIRING      // khiếm khuyết còn ≤30 ngày là hết hạn bảo hành, chưa xử lý xong
 }
 
 enum AlertStatus {
@@ -1009,6 +1113,7 @@ model NhaCungCapVatTu {
   ngayTao         DateTime    @default(now()) @map("ngay_tao")
   ngayCapNhat     DateTime    @default(now()) @map("ngay_cap_nhat")
   vatTuDuAnDaDung VatTuDuAn[]
+  thietBiDuAnDaDung ThietBiDuAn[]
 
   @@map("nha_cung_cap")
 }
@@ -1027,6 +1132,7 @@ model DuAn {
   ngayTao             DateTime    @default(now()) @map("ngay_tao")
   ngayCapNhat         DateTime    @default(now()) @map("ngay_cap_nhat")
   vatTuDuAn           VatTuDuAn[]
+  thietBiDuAn         ThietBiDuAn[]
 
   @@map("du_an")
 }
@@ -1089,4 +1195,97 @@ model CongViecVatTu {
   ngayCapNhat    DateTime  @default(now()) @map("ngay_cap_nhat")
 
   @@map("cong_viec_vat_tu")
+}
+
+/**
+ * Danh mục tham khảo thiết bị điện tử (nhà ở, home office, an ninh, smart home, năng lượng) —
+ * giá tham khảo theo CẤP DANH MỤC (thấp/trung bình/cao), không phải theo model/nhà cung cấp cụ thể.
+ * Nguồn: MASTER DATABASE DANH MỤC THIẾT BỊ ĐIỆN TỬ, cập nhật 13/07/2026.
+ * `suDungTrongDuAn` là tầng theo dõi thực tế theo dự án — cùng cấu trúc với VatTu/VatTuDuAn.
+ */
+model ThietBi {
+  id                String    @id @default(cuid())
+  maDanhMuc         String    @unique // "EL-01-001"
+  maNhom            String    // "01"
+  nhomCap1          String    // "THIẾT BỊ BẾP"
+  nhomCap2          String    // "Bếp nấu"
+  tenHangMuc        String    // "Bếp từ đơn để bàn"
+  donViTinh         String?
+  coSoSoLuong       String?   // gợi ý cách tính số lượng, VD "Theo khu bếp/phòng trọ"
+  thongSoBatBuoc    String?   // thông số cần hỏi khi báo giá thực tế
+  thuongHieuPhoBien String?
+  giaThap           Decimal?  @db.Decimal(18, 0)
+  giaTrungBinh      Decimal?  @db.Decimal(18, 0)
+  giaCao            Decimal?  @db.Decimal(18, 0)
+  baoHanhThang      Int?
+  tuoiThoNam        Int?
+  yeuCauLapDat      String?
+  nguonThamKhao     String?
+  ngayCapNhat       DateTime?
+  doTinCay          String    @default("trung_binh") // cao | trung_binh | thap
+  trangThai         String    @default("dang_su_dung") // dang_su_dung | ngung_ban | thay_the
+  ghiChu            String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  suDungTrongDuAn   ThietBiDuAn[]
+
+  @@index([nhomCap1])
+}
+
+/**
+ * Thiết bị thật đang dùng cho 1 dự án — chọn từ danh mục ThietBi, theo dõi tiến độ riêng:
+ * chọn model -> đặt hàng -> giao hàng -> lắp đặt (khác vat_tu_du_an ở tên trạng thái cho đúng
+ * vòng đời thiết bị điện tử, thay vì "chốt mẫu"/"thi công" vốn hợp với vật tư xây dựng hơn).
+ */
+model ThietBiDuAn {
+  id                 String            @id @default(cuid())
+  idDuAn             BigInt            @map("id_du_an")
+  duAn               DuAn              @relation(fields: [idDuAn], references: [id])
+  idThietBi          String            @map("id_thiet_bi")
+  thietBi            ThietBi           @relation(fields: [idThietBi], references: [id])
+  idNhaCungCap       BigInt?           @map("id_nha_cung_cap")
+  nhaCungCap         NhaCungCapVatTu?  @relation(fields: [idNhaCungCap], references: [id])
+  idMilestone        String?           @map("id_milestone")
+  milestone          Milestone?        @relation(fields: [idMilestone], references: [id])
+  viTriLapDat        String?           // vị trí lắp đặt, VD "Bếp", "Phòng khách tầng 1"
+  soLuongDuKien      Decimal?          @db.Decimal(18, 2)
+  soLuongThucTe      Decimal?          @db.Decimal(18, 2)
+  donViTinh          String?
+  donGiaDuKien       Decimal?          @db.Decimal(18, 2)
+  donGiaChot         Decimal?          @db.Decimal(18, 2)
+  thanhTienDuKien    Decimal?          @db.Decimal(18, 2)
+  thanhTienChot      Decimal?          @db.Decimal(18, 2)
+  nguoiMua           String            @default("chua_xac_dinh")
+  trangThaiChonModel String            @default("chua_chon")   // chua_chon | da_chon
+  trangThaiDatHang   String            @default("chua_dat")    // chua_dat | da_dat | da_mua
+  trangThaiGiaoHang  String            @default("chua_giao")   // chua_giao | da_giao
+  trangThaiLapDat    String            @default("chua_lap_dat") // chua_lap_dat | dang_lap_dat | da_lap_dat | can_sua_loi
+  ngayCanChonModel   DateTime?         @db.Date
+  ngayCanDatHang     DateTime?         @db.Date
+  ngayCanGiaoHang    DateTime?         @db.Date
+  ngayCanLapDat      DateTime?         @db.Date
+  ghiChu             String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  congViec           CongViecThietBi[]
+
+  @@map("thiet_bi_du_an")
+}
+
+model CongViecThietBi {
+  id            String      @id @default(cuid())
+  idThietBiDuAn String      @map("id_thiet_bi_du_an")
+  thietBiDuAn   ThietBiDuAn @relation(fields: [idThietBiDuAn], references: [id], onDelete: Cascade)
+  maCongViec    String
+  tenCongViec   String
+  thuTu         Int         @default(0)
+  ngayDuKien    DateTime?   @db.Date
+  ngayThucTe    DateTime?   @db.Date
+  nguoiPhuTrach String?
+  trangThai     String      @default("chua_lam")
+  ghiChu        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("cong_viec_thiet_bi")
 }
