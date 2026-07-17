@@ -31,8 +31,8 @@ export type TodoItem = {
   // Thứ tự giai đoạn (Phase.sortOrder) — chỉ có ở MILESTONE_TASK/MILESTONE_CHECKLIST (2 nguồn duy
   // nhất gắn trực tiếp với 1 giai đoạn thi công cụ thể), dùng để sắp WBS theo đúng trình tự I → II → III...
   phaseOrder: number | null;
-  // Chỉ DAILY_LOG có bình luận/cảm xúc (gắn ở cấp DailyLogItem); chỉ MILESTONE_TASK có ảnh/ghi âm
-  // (gắn ở cấp MilestoneTask) — nguồn khác luôn rỗng, không có chỗ lưu media/bình luận riêng.
+  // Chỉ DAILY_LOG có bình luận/cảm xúc (gắn ở cấp DailyLogItem); DAILY_LOG và MILESTONE_TASK đều có
+  // ảnh/ghi âm riêng (gắn ở cấp DailyLogItem/MilestoneTask) — nguồn khác luôn rỗng.
   comments?: TodoComment[];
   reactions?: TodoReaction[];
   photos?: TodoMedia[];
@@ -47,6 +47,7 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
         dailyLog: { select: { logDate: true } },
         comments: { orderBy: { createdAt: "asc" } },
         reactions: true,
+        photos: { where: { docType: { in: ["SITE_PHOTO", "VOICE_NOTE"] } }, orderBy: { uploadedAt: "asc" } },
       },
       orderBy: { dueDate: "asc" },
     }),
@@ -92,6 +93,8 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       if (r.authorEmail === myEmail) g.reactedByMe = true;
       reactionGroups.set(r.emoji, g);
     }
+    const urls = await Promise.all(it.photos.map((doc) => getSignedUrl(doc.fileUrl)));
+    const resolvedDocs = it.photos.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title, docType: doc.docType })).filter((d) => d.url);
     items.push({
       id: it.id,
       source: "DAILY_LOG",
@@ -108,6 +111,8 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       phaseOrder: null,
       comments: it.comments.map((c) => ({ id: c.id, authorEmail: c.authorEmail, body: c.body, createdAt: c.createdAt.toISOString() })),
       reactions: [...reactionGroups.entries()].map(([emoji, g]) => ({ emoji, ...g })),
+      photos: resolvedDocs.filter((d) => d.docType === "SITE_PHOTO"),
+      voiceNotes: resolvedDocs.filter((d) => d.docType === "VOICE_NOTE"),
     });
   }
 

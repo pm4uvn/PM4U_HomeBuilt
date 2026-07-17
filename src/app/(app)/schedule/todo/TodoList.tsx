@@ -9,8 +9,8 @@ import { toggleDailyLogItem, toggleMilestoneTask, toggleChecklistItem, updateDai
 import { toggleRiskMitigationAction } from "../../risks/actions";
 import { updateIssueStatus } from "../../issues/actions";
 import { updateDefectStatus } from "../../defects/actions";
-import { DailyLogItemDiscussion, MilestoneTaskPhotos, VoiceNotes } from "../forms";
-import { uploadMilestoneTaskVoiceNote, deleteMilestoneTaskPhoto } from "../actions";
+import { DailyLogItemDiscussion, DailyLogItemPhotos, MilestoneTaskPhotos, VoiceNotes } from "../forms";
+import { uploadMilestoneTaskVoiceNote, deleteMilestoneTaskPhoto, uploadDailyLogItemVoiceNote, deleteDailyLogItemPhoto } from "../actions";
 
 const SOURCE_LABEL: Record<TodoSource, string> = {
   DAILY_LOG: "📆 Nhật ký",
@@ -93,7 +93,7 @@ function naturalCompare(a: string, b: string): number {
  * trong DB). Key gắn theo (id + dueDate + pic) ở nơi gọi để ép remount lấy state mới mỗi khi dữ
  * liệu đổi từ nơi khác (Gantt chi tiết, Detail Plan, Nhật ký) — đảm bảo DB luôn là nguồn duy nhất.
  */
-/** Nguồn nào có chỗ gắn bình luận/ảnh/ghi âm — chỉ DAILY_LOG (bình luận, cảm xúc) và MILESTONE_TASK (ảnh, ghi âm) */
+/** Nguồn nào có chỗ gắn bình luận/ảnh/ghi âm — chỉ DAILY_LOG (bình luận, cảm xúc, ảnh, ghi âm) và MILESTONE_TASK (ảnh, ghi âm) */
 const hasAttachments = (source: TodoSource) => source === "DAILY_LOG" || source === "MILESTONE_TASK";
 
 function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willBeDone: boolean) => void; myEmail: string }) {
@@ -212,12 +212,24 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
           <td></td>
           <td colSpan={9} className="pb-3 pt-1">
             {item.source === "DAILY_LOG" ? (
-              <DailyLogItemDiscussion
-                itemId={item.id}
-                comments={item.comments ?? []}
-                reactions={item.reactions ?? []}
-                myEmail={myEmail}
-              />
+              <div className="space-y-1.5">
+                <DailyLogItemDiscussion
+                  itemId={item.id}
+                  comments={item.comments ?? []}
+                  reactions={item.reactions ?? []}
+                  myEmail={myEmail}
+                />
+                <div className="flex flex-wrap gap-3 items-start">
+                  <DailyLogItemPhotos itemId={item.id} projectId={item.projectId} photos={item.photos ?? []} />
+                  <VoiceNotes
+                    notes={item.voiceNotes ?? []}
+                    entityId={item.id}
+                    projectId={item.projectId}
+                    uploadAction={uploadDailyLogItemVoiceNote}
+                    onDelete={deleteDailyLogItemPhoto}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="flex flex-wrap gap-3 items-start">
                 <MilestoneTaskPhotos taskId={item.id} projectId={item.projectId} photos={item.photos ?? []} />

@@ -630,7 +630,7 @@ model DailyLogItem {
   vatTuDuAnId BigInt?    // việc này thuộc đúng 1 vật tư nào (tùy chọn)
   vatTuDuAn   VatTuDuAn? @relation(fields: [vatTuDuAnId], references: [id])
   documentId  String?    // việc này liên quan đúng 1 hồ sơ nào (tùy chọn) — VD giấy phép, biên bản
-  document    Document?  @relation(fields: [documentId], references: [id])
+  document    Document?  @relation("DailyLogItemLinkedDoc", fields: [documentId], references: [id])
   contractId  String?    // việc này liên quan đúng 1 hợp đồng nào (tùy chọn)
   contract    Contract?  @relation(fields: [contractId], references: [id])
   workType    DailyLogWorkType? // loại công việc — dùng lọc/báo cáo theo nhóm (Pháp lý, Mặt bằng, Ép cọc...)
@@ -638,6 +638,7 @@ model DailyLogItem {
   sortOrder   Int        @default(0)
   comments    DailyLogItemComment[]  // bình luận cập nhật tiến độ theo thời gian thực, kiểu Facebook
   reactions   DailyLogItemReaction[] // thả cảm xúc (👍❤️😂😮😢) — 1 người chỉ thả 1 lần / loại cảm xúc / việc
+  photos      Document[] @relation("DailyLogItemPhotos") // ảnh/ghi âm hiện trường gắn thẳng vào việc này (khác documentId — đây là bằng chứng thi công, không phải hồ sơ liên quan)
 }
 
 /** Bình luận trao đổi trên 1 việc cụ thể trong nhật ký — cập nhật trạng thái/tiến độ dạng chat thay vì phải sửa lại field cứng */
@@ -1008,7 +1009,9 @@ model Document {
   milestoneTask      MilestoneTask? @relation(fields: [milestoneTaskId], references: [id])
   milestoneId        String?
   milestone          Milestone? @relation(fields: [milestoneId], references: [id])
-  dailyLogItems      DailyLogItem[] // các việc trong nhật ký gắn trực tiếp với hồ sơ này
+  dailyLogItems      DailyLogItem[] @relation("DailyLogItemLinkedDoc") // các việc trong nhật ký gắn trực tiếp với hồ sơ này
+  dailyLogItemId     String? // ảnh/ghi âm hiện trường gắn thẳng vào 1 việc cụ thể trong nhật ký (khác dailyLogId — theo từng việc, không chỉ theo ngày)
+  dailyLogItem       DailyLogItem? @relation("DailyLogItemPhotos", fields: [dailyLogItemId], references: [id])
 
   uploadedAt DateTime @default(now())
 

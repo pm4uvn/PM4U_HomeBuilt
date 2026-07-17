@@ -762,6 +762,83 @@ export async function deleteDailyLogPhoto(id: string) {
   revalidate();
 }
 
+/**
+ * Tải nhiều ảnh hiện trường lên cho 1 việc cụ thể trong nhật ký (DailyLogItem) — khác với
+ * uploadDailyLogPhotos (gắn theo cả ngày): dùng khi CĐT có ảnh của đúng 1 hoạt động (VD "định vị
+ * tim cọc") chụp muộn hơn ngày ghi nhật ký, cần biết chính xác ảnh minh chứng cho việc nào.
+ */
+export async function uploadDailyLogItemPhotos(
+  itemId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa chọn ảnh nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+    }
+
+    for (const file of files) {
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId,
+          docType: "SITE_PHOTO",
+          title: file.name,
+          fileUrl: path,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          dailyLogItemId: itemId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+/** Xóa 1 ảnh hiện trường đã gắn vào 1 việc cụ thể trong nhật ký (xóa cả file trong storage, tránh mồ côi) */
+export async function deleteDailyLogItemPhoto(id: string) {
+  await requireUser();
+  const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
+  await prisma.document.delete({ where: { id } });
+  await removeFromStorage(doc.fileUrl);
+  revalidate();
+}
+
+/** Ghi âm giọng nói gắn thẳng vào 1 việc cụ thể trong nhật ký — cùng cơ chế với uploadDailyLogVoiceNote */
+export async function uploadDailyLogItemVoiceNote(
+  itemId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa có bản ghi âm nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId, docType: "VOICE_NOTE", title: file.name, fileUrl: path,
+          mimeType: file.type || null, fileSize: file.size, dailyLogItemId: itemId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
 /** Tải nhiều ảnh hiện trường lên cho 1 công việc WBS (MilestoneTask) — bằng chứng thi công/nghiệm thu */
 export async function uploadMilestoneTaskPhotos(
   taskId: string,

@@ -17,7 +17,8 @@ import {
   uploadDailyLogPhotos, deleteDailyLogPhoto, type UploadPhotosState,
   uploadMilestoneTaskPhotos, deleteMilestoneTaskPhoto,
   uploadMilestonePhotos, deleteMilestonePhoto,
-  uploadDailyLogVoiceNote, uploadMilestoneVoiceNote, uploadMilestoneTaskVoiceNote,
+  uploadDailyLogItemPhotos, deleteDailyLogItemPhoto,
+  uploadDailyLogVoiceNote, uploadMilestoneVoiceNote, uploadMilestoneTaskVoiceNote, uploadDailyLogItemVoiceNote,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
   toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask, updateMilestoneTaskFields,
   addDailyLogItemComment, deleteDailyLogItemComment, toggleDailyLogItemReaction,
@@ -917,6 +918,7 @@ export function DailyLogItemsView({
   dayMilestoneNames = [],
   dayVatTuNames = [],
   myEmail = "",
+  projectId,
 }: {
   items: {
     id: string; label: string; isChecked: boolean; dueDate: string | null;
@@ -924,10 +926,14 @@ export function DailyLogItemsView({
     documentTitle: string | null; contractLabel: string | null; pic: string | null;
     comments?: { id: string; authorEmail: string; body: string; createdAt: string }[];
     reactions?: { emoji: string; count: number; reactedByMe: boolean }[];
+    photos?: DailyLogPhoto[];
+    voiceNotes?: DailyLogPhoto[];
   }[];
   dayMilestoneNames?: string[];
   dayVatTuNames?: string[];
   myEmail?: string;
+  /** Cần để tải ảnh/ghi âm lên đúng bucket dự án — bỏ trống thì ẩn nút gắn ảnh riêng cho từng việc */
+  projectId?: string;
 }) {
   if (items.length === 0) return null;
   const today = new Date().toISOString().slice(0, 10);
@@ -999,6 +1005,18 @@ export function DailyLogItemsView({
                 reactions={it.reactions ?? []}
                 myEmail={myEmail}
               />
+              {projectId && (
+                <div className="flex items-center gap-2 mt-1">
+                  <DailyLogItemPhotos itemId={it.id} projectId={projectId} photos={it.photos ?? []} />
+                  <VoiceNotes
+                    notes={it.voiceNotes ?? []}
+                    entityId={it.id}
+                    projectId={projectId}
+                    uploadAction={uploadDailyLogItemVoiceNote}
+                    onDelete={deleteDailyLogItemPhoto}
+                  />
+                </div>
+              )}
             </div>
           </div>
         );
@@ -1201,6 +1219,70 @@ export function MilestonePhotos({
         </Button>
       </form>
       {state.error && <p className="text-critical text-xs mt-1">{state.error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Ảnh hiện trường gắn thẳng vào 1 việc cụ thể trong nhật ký (DailyLogItem) — khác DailyLogPhotos
+ * (gắn theo cả ngày): dùng khi có ảnh minh chứng đúng cho 1 hoạt động, kể cả chụp muộn hơn ngày ghi
+ * nhật ký (VD ghi nhật ký "định vị tim cọc" hôm qua, có ảnh hiện trường hôm nay mới chụp xong).
+ */
+export function DailyLogItemPhotos({
+  itemId,
+  projectId,
+  photos,
+}: {
+  itemId: string;
+  projectId: string;
+  photos: DailyLogPhoto[];
+}) {
+  const [state, action, pending] = useActionState<UploadPhotosState, FormData>(
+    async (prev, fd) => uploadDailyLogItemPhotos(itemId, projectId, prev, fd),
+    {},
+  );
+  const formRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-1 inline-flex items-center gap-1.5 flex-wrap">
+      {photos.map((p) => (
+        <div key={p.id} className="relative group shrink-0">
+          <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.url} alt={p.title} className="w-10 h-10 object-cover rounded border border-line cursor-pointer" />
+          </PreviewButton>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm(`Xóa ảnh "${p.title}"?`)) deleteDailyLogItemPhoto(p.id);
+            }}
+            className="absolute -top-1.5 -right-1.5 bg-critical text-white rounded-full w-4 h-4 text-[10px] leading-4 opacity-0 group-hover:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <form ref={formRef} action={action}>
+        <input
+          ref={inputRef}
+          type="file"
+          name="files"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={() => formRef.current?.requestSubmit()}
+        />
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+          className="text-[11px] text-ink-2 hover:text-brand"
+        >
+          {pending ? "Đang tải..." : `📷 ${photos.length > 0 ? photos.length : "Ảnh"}`}
+        </button>
+      </form>
+      {state.error && <p className="text-critical text-xs w-full">{state.error}</p>}
     </div>
   );
 }

@@ -46,6 +46,7 @@ export default async function DailyLogPage() {
             contract: { select: { code: true, title: true, vendor: { select: { name: true } } } },
             comments: { orderBy: { createdAt: "asc" } },
             reactions: true,
+            photos: { where: { docType: { in: ["SITE_PHOTO", "VOICE_NOTE"] } }, orderBy: { uploadedAt: "asc" } },
           },
         },
         documents: { where: { docType: { in: ["SITE_PHOTO", "VOICE_NOTE"] } }, orderBy: { uploadedAt: "asc" } },
@@ -115,6 +116,20 @@ export default async function DailyLogPage() {
     }),
   );
 
+  // Tương tự nhưng theo từng việc riêng lẻ (DailyLogItem) — ảnh/ghi âm chụp muộn hơn ngày ghi nhật ký vẫn gắn đúng việc
+  const photosByItem = new Map<string, { id: string; url: string; title: string }[]>();
+  const voiceNotesByItem = new Map<string, { id: string; url: string; title: string }[]>();
+  await Promise.all(
+    dailyLogs.flatMap((d) =>
+      d.items.map(async (it) => {
+        const urls = await Promise.all(it.photos.map((doc) => getSignedUrl(doc.fileUrl)));
+        const resolved = it.photos.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title, docType: doc.docType })).filter((p) => p.url);
+        photosByItem.set(it.id, resolved.filter((p) => p.docType === "SITE_PHOTO"));
+        voiceNotesByItem.set(it.id, resolved.filter((p) => p.docType === "VOICE_NOTE"));
+      }),
+    ),
+  );
+
   return (
     <div className="space-y-3">
       <ScheduleTabs />
@@ -182,11 +197,14 @@ export default async function DailyLogPage() {
                             pic: it.pic,
                             comments: it.comments.map((c) => ({ id: c.id, authorEmail: c.authorEmail, body: c.body, createdAt: c.createdAt.toISOString() })),
                             reactions: [...reactionGroups.entries()].map(([emoji, g]) => ({ emoji, ...g })),
+                            photos: photosByItem.get(it.id) ?? [],
+                            voiceNotes: voiceNotesByItem.get(it.id) ?? [],
                           };
                         })}
                         dayMilestoneNames={d.milestones.map((m) => m.name)}
                         dayVatTuNames={d.vatTuDuAn.map((v) => v.vatTu.tenVatTu)}
                         myEmail={myEmail}
+                        projectId={project.id}
                       />
                     ) : (
                       <>
