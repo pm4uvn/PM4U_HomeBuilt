@@ -386,6 +386,7 @@ export function RecordInspectionForm({
 
 type DailyLogPhase = { name: string; milestones: { id: string; name: string }[] };
 type DailyLogItemInput = {
+  id: string; // rỗng = dòng mới thêm trong form; có id = dòng đã tồn tại, giữ nguyên khi lưu (không mất bình luận/ảnh/%)
   label: string; checked: boolean; dueDate: string; milestoneId: string; vatTuDuAnId: string; workType: string;
   documentId: string; contractId: string; pic: string;
 };
@@ -432,6 +433,7 @@ function DailyLogItemsEditor({
       {items.map((it, i) => (
         <div key={i} className="border border-line rounded-lg p-2 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
+            <input type="hidden" name="itemId[]" value={it.id} />
             <input type="checkbox" checked={it.checked} onChange={(e) => update(i, { checked: e.target.checked })} />
             <input type="hidden" name="itemChecked[]" value={it.checked ? "true" : "false"} />
             <Input
@@ -537,7 +539,7 @@ function DailyLogItemsEditor({
           setItems([
             ...items,
             {
-              label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "",
+              id: "", label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "",
               documentId: "", contractId: "", pic: "",
             },
           ])
@@ -586,7 +588,7 @@ function DailyLogFields({
     defaultItems.length > 0
       ? defaultItems
       : [{
-          label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "",
+          id: "", label: "", checked: false, dueDate: "", milestoneId: "", vatTuDuAnId: "", workType: "",
           documentId: "", contractId: "", pic: "",
         }],
   );
@@ -761,6 +763,7 @@ export function EditDailyLogForm({
             contractOptions={contractOptions}
             picOptions={picOptions}
             defaultItems={log.items.map((it) => ({
+              id: it.id,
               label: it.label, checked: it.isChecked, dueDate: it.dueDate?.slice(0, 10) ?? "",
               milestoneId: it.milestoneId ?? "", vatTuDuAnId: it.vatTuDuAnId ?? "", workType: it.workType ?? "",
               documentId: it.documentId ?? "", contractId: it.contractId ?? "", pic: it.pic ?? "",

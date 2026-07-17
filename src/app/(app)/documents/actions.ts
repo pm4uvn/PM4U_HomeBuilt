@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { uploadToStorage } from "@/lib/storage";
+import { uploadToStorage, removeFromStorage } from "@/lib/storage";
 import type { DocType } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -62,4 +62,36 @@ export async function uploadDocument(
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
   }
+}
+
+/** Sửa tiêu đề/loại hồ sơ của 1 tài liệu đã tải lên (không đổi file) */
+export async function updateDocument(
+  id: string,
+  _prev: UploadState,
+  fd: FormData,
+): Promise<UploadState> {
+  await requireUser();
+  try {
+    const title = str(fd, "title");
+    if (!title) return { error: "Chưa nhập tiêu đề" };
+    const doc = await prisma.document.update({
+      where: { id },
+      data: { title, docType: str(fd, "docType") as DocType },
+    });
+    revalidatePath("/documents");
+    if (doc.contractId) revalidatePath(`/contracts/${doc.contractId}`);
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+/** Xóa 1 tài liệu (xóa cả file trong storage, tránh mồ côi) */
+export async function deleteDocument(id: string) {
+  await requireUser();
+  const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
+  await prisma.document.delete({ where: { id } });
+  await removeFromStorage(doc.fileUrl);
+  revalidatePath("/documents");
+  if (doc.contractId) revalidatePath(`/contracts/${doc.contractId}`);
 }

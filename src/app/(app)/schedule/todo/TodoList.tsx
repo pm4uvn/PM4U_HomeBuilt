@@ -59,6 +59,24 @@ async function updatePic(item: TodoItem, value: string) {
   if (item.source === "MILESTONE_TASK") return updateMilestoneTaskFields(item.id, { responsible: value });
 }
 
+/**
+ * MilestoneTask không có field "Bắt đầu" riêng trong DB (chỉ lưu dueDate + durationDays, giống cách
+ * DetailGantt tính) — sửa Bắt đầu thực chất là ghi lại durationDays = Hạn - Bắt đầu, giữ nguyên Hạn.
+ */
+async function updateStart(item: TodoItem, value: string) {
+  if (item.source === "DAILY_LOG") return updateDailyLogItemFields(item.id, { startDate: value || null });
+  if (item.source === "MILESTONE_TASK") {
+    if (!value || !item.dueDate) return;
+    const days = Math.max(1, Math.round((new Date(item.dueDate).getTime() - new Date(value).getTime()) / 86_400_000));
+    return updateMilestoneTaskFields(item.id, { durationDays: days });
+  }
+}
+
+async function updatePercent(item: TodoItem, value: number) {
+  if (item.source === "DAILY_LOG") return updateDailyLogItemFields(item.id, { percentComplete: value });
+  if (item.source === "MILESTONE_TASK") return updateMilestoneTaskFields(item.id, { percentComplete: value });
+}
+
 /** input type="date" cho gõ tay tới 6 chữ số năm khi chưa gõ xong — chỉ lưu DB khi năm hợp lý */
 const isSaneDate = (iso: string) => {
   const y = new Date(iso).getFullYear();
@@ -89,9 +107,10 @@ function naturalCompare(a: string, b: string): number {
 }
 
 /**
- * 1 dòng bảng — Hạn/PIC sửa trực tiếp tại đây cho Nhật ký/WBS tiến độ (2 nguồn có field riêng
- * trong DB). Key gắn theo (id + dueDate + pic) ở nơi gọi để ép remount lấy state mới mỗi khi dữ
- * liệu đổi từ nơi khác (Gantt chi tiết, Detail Plan, Nhật ký) — đảm bảo DB luôn là nguồn duy nhất.
+ * 1 dòng bảng — Hạn/PIC/Bắt đầu/% sửa trực tiếp tại đây cho Nhật ký/WBS tiến độ (2 nguồn có field
+ * riêng trong DB). Key gắn theo (id + dueDate + pic + startDate + percentComplete) ở nơi gọi để ép
+ * remount lấy state mới mỗi khi dữ liệu đổi từ nơi khác (Gantt chi tiết, Detail Plan, Nhật ký) —
+ * đảm bảo DB luôn là nguồn duy nhất.
  */
 /** Nguồn nào có chỗ gắn bình luận/ảnh/ghi âm — chỉ DAILY_LOG (bình luận, cảm xúc, ảnh, ghi âm) và MILESTONE_TASK (ảnh, ghi âm) */
 const hasAttachments = (source: TodoSource) => source === "DAILY_LOG" || source === "MILESTONE_TASK";
@@ -99,6 +118,8 @@ const hasAttachments = (source: TodoSource) => source === "DAILY_LOG" || source 
 function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willBeDone: boolean) => void; myEmail: string }) {
   const [isPending, startTransition] = useTransition();
   const [due, setDue] = useState(item.dueDate ? item.dueDate.slice(0, 10) : "");
+  const [start, setStart] = useState(item.startDate ? item.startDate.slice(0, 10) : "");
+  const [percent, setPercent] = useState(item.percentComplete != null ? String(item.percentComplete) : "");
   const [pic, setPic] = useState(item.pic ?? "");
   const [picTouched, setPicTouched] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -175,7 +196,24 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
             <span className="text-muted">{item.pic ?? "—"}</span>
           )}
         </td>
-        <td className="py-2 pr-2 text-[12px] text-muted whitespace-nowrap">{item.startDate ? fmtDate(item.startDate) : "—"}</td>
+        <td className="py-2 pr-2 text-[12px] whitespace-nowrap">
+          {editable ? (
+            <input
+              type="date"
+              value={start}
+              className={EDIT_INPUT}
+              onChange={(e) => {
+                setStart(e.target.value);
+                if (e.target.value && !isSaneDate(e.target.value)) return; // đang gõ dở/ngày rác — chưa lưu
+                startTransition(() => { void updateStart(item, e.target.value); });
+              }}
+            />
+          ) : item.startDate ? (
+            <span className="text-muted">{fmtDate(item.startDate)}</span>
+          ) : (
+            <span className="text-muted">—</span>
+          )}
+        </td>
         <td className="py-2 pr-2 text-[12px] whitespace-nowrap">
           {editable ? (
             <input
@@ -196,7 +234,25 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
           )}
         </td>
         <td className="py-2 pr-2 text-[12px] whitespace-nowrap" style={{ color: item.percentComplete != null && item.percentComplete >= 100 ? "var(--good)" : undefined }}>
-          {item.percentComplete != null ? `${item.percentComplete}%` : "—"}
+          {editable ? (
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={percent}
+              className={`${EDIT_INPUT} w-12`}
+              onChange={(e) => setPercent(e.target.value)}
+              onBlur={() => {
+                const n = Number(percent);
+                if (percent === "" || isNaN(n)) { setPercent(item.percentComplete != null ? String(item.percentComplete) : ""); return; }
+                if (n !== item.percentComplete) startTransition(() => { void updatePercent(item, n); });
+              }}
+            />
+          ) : item.percentComplete != null ? (
+            `${item.percentComplete}%`
+          ) : (
+            "—"
+          )}
         </td>
         <td className="py-2 pr-2 text-[12px] font-semibold whitespace-nowrap" style={{ color: item.delayDays != null ? "var(--critical)" : undefined }}>
           {item.delayDays != null ? `⚠️ ${item.delayDays}d` : "—"}
@@ -366,7 +422,7 @@ export function TodoList({
               <tbody>
                 {sorted.map((it) => (
                   <TodoRow
-                    key={`${it.source}:${it.id}:${it.dueDate}:${it.pic}`}
+                    key={`${it.source}:${it.id}:${it.dueDate}:${it.pic}:${it.startDate}:${it.percentComplete}`}
                     item={it}
                     onToggle={(willBeDone) => setOverrides((prev) => new Map(prev).set(it.id, willBeDone))}
                     myEmail={myEmail}

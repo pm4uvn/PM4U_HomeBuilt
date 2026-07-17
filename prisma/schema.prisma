@@ -624,6 +624,8 @@ model DailyLogItem {
   dailyLog    DailyLog   @relation(fields: [dailyLogId], references: [id], onDelete: Cascade)
   label       String
   isChecked   Boolean    @default(false)
+  startDate   DateTime?  // ngày bắt đầu riêng (tùy chọn) — trống thì mặc định lấy ngày ghi nhật ký (dailyLog.logDate)
+  percentComplete Int    @default(0) // 0-100, theo dõi tiến độ giữa chừng độc lập với isChecked — giống MilestoneTask
   dueDate     DateTime?  // hạn cần xong việc này — hiện cảnh báo nếu trễ mà chưa tick
   milestoneId String?    // việc này thuộc đúng 1 mốc nào (tùy chọn) — chi tiết hơn liên kết ở cấp cả ngày
   milestone   Milestone? @relation(fields: [milestoneId], references: [id])

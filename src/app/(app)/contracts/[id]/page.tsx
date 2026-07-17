@@ -17,7 +17,8 @@ import {
 import {
   AddStageForm, EditStageForm, AddPaymentForm, PaymentTransactionList,
   AddPenaltyRuleForm, EditPenaltyRuleForm, DeletePenaltyRuleButton, RecordPenaltyEventForm,
-  AddDiscountForm, CreateVariationForm, VariationDecision, UploadContractFileForm, EditContractForm,
+  AddDiscountForm, CreateVariationForm, VariationDecision, UploadContractFileForm, UploadContractDeliverableForm,
+  EditDocumentForm, DeleteDocumentButton, EditContractForm,
 } from "../forms";
 
 /** Tên hiển thị điều khoản phạt — CUSTOM dùng label tự đặt, các loại chuẩn dùng tên có sẵn */
@@ -186,11 +187,12 @@ export default async function ContractDetailPage({
 
       {/* Tài liệu đính kèm — tải trực tiếp hoặc gắn từ trang Hồ sơ */}
       <Card title={`📎 Tài liệu đính kèm (${documents.length})`}>
-        <div className="mb-3">
+        <div className="mb-3 flex flex-wrap gap-2">
           <UploadContractFileForm contractId={id} projectId={contract.projectId} contractCode={contract.code} />
+          <UploadContractDeliverableForm contractId={id} projectId={contract.projectId} contractCode={contract.code} />
         </div>
         {documents.length === 0 ? (
-          <EmptyState title="Chưa có file nào" sub="Bấm “+ Tải file hợp đồng” ở trên để đính kèm bản scan, biên bản..." />
+          <EmptyState title="Chưa có file nào" sub="Bấm “+ Tải file hợp đồng” hoặc “+ Tài liệu đầu ra” ở trên để đính kèm" />
         ) : (
           <ul className="divide-y divide-grid">
             {documents.map((d, i) => (
@@ -199,11 +201,15 @@ export default async function ContractDetailPage({
                   <span className="font-semibold">{d.title}</span>
                   <span className="text-muted"> · {DOC_TYPE[d.docType]}</span>
                 </div>
-                {documentUrls[i] ? (
-                  <PreviewButton url={documentUrls[i]!} mimeType={d.mimeType} title={d.title} />
-                ) : (
-                  <span className="text-muted text-xs">—</span>
-                )}
+                <div className="flex items-center gap-3 shrink-0">
+                  {documentUrls[i] ? (
+                    <PreviewButton url={documentUrls[i]!} mimeType={d.mimeType} title={d.title} />
+                  ) : (
+                    <span className="text-muted text-xs">—</span>
+                  )}
+                  <EditDocumentForm doc={{ id: d.id, title: d.title, docType: d.docType }} />
+                  <DeleteDocumentButton id={d.id} title={d.title} />
+                </div>
               </li>
             ))}
           </ul>

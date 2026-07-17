@@ -101,9 +101,9 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       label: it.label,
       context: `Nhật ký ${fmtDate(it.dailyLog.logDate)}`,
       pic: it.pic,
-      startDate: it.dailyLog.logDate.toISOString(), // việc nhật ký chỉ trong 1 ngày -> bắt đầu = ngày ghi nhật ký
+      startDate: it.startDate?.toISOString() ?? it.dailyLog.logDate.toISOString(), // trống thì mặc định = ngày ghi nhật ký
       dueDate,
-      percentComplete: null,
+      percentComplete: it.percentComplete,
       ...overdueInfo(dueDate, it.isChecked),
       isDone: it.isChecked,
       href: "/schedule/daily-log",

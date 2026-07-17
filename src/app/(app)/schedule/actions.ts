@@ -540,8 +540,9 @@ export async function recordInspectionAction(milestoneId: string, fd: FormData) 
   revalidatePath("/contracts");
 }
 
-/** Tách các dòng việc trong ngày từ form (mảng itemLabel[] / itemChecked[] / itemDueDate[] / itemMilestoneId[] / itemVatTuId[] / itemWorkType[] / itemDocumentId[] / itemContractId[] / itemPic[] cùng chỉ số) */
+/** Tách các dòng việc trong ngày từ form (mảng itemId[] / itemLabel[] / itemChecked[] / itemDueDate[] / itemMilestoneId[] / itemVatTuId[] / itemWorkType[] / itemDocumentId[] / itemContractId[] / itemPic[] cùng chỉ số) */
 function parseDailyLogItems(fd: FormData) {
+  const ids = fd.getAll("itemId[]").map(String);
   const labels = fd.getAll("itemLabel[]").map(String);
   const checked = fd.getAll("itemChecked[]").map(String);
   const dueDates = fd.getAll("itemDueDate[]").map(String);
@@ -553,6 +554,7 @@ function parseDailyLogItems(fd: FormData) {
   const pics = fd.getAll("itemPic[]").map(String);
   return labels
     .map((label, i) => ({
+      id: ids[i] || null, // có id = dòng đã tồn tại (giữ nguyên bản ghi cũ khi lưu); rỗng = dòng mới thêm trong form
       label: label.trim(),
       isChecked: checked[i] === "true",
       dueDate: dueDates[i] ? new Date(dueDates[i]) : null,
@@ -565,6 +567,34 @@ function parseDailyLogItems(fd: FormData) {
       sortOrder: i,
     }))
     .filter((it) => it.label);
+}
+
+/**
+ * Lưu danh sách việc trong ngày mà KHÔNG xóa-tạo-lại toàn bộ (cách cũ làm mất bình luận/cảm
+ * xúc/ảnh/ghi âm/%/ngày bắt đầu của các việc chưa đổi gì, vì id cũ bị hủy và tạo id mới hoàn toàn).
+ * Dòng có id (đã tồn tại) -> update tại chỗ, giữ nguyên id + mọi dữ liệu con (comments/reactions/
+ * photos cascade theo dailyLogItemId). Dòng không có id (mới thêm trong form) -> tạo mới. Dòng cũ
+ * không còn xuất hiện trong danh sách gửi lên (bị xóa trong form) -> xóa hẳn.
+ */
+async function reconcileDailyLogItems(
+  tx: Prisma.TransactionClient,
+  dailyLogId: string,
+  items: ReturnType<typeof parseDailyLogItems>,
+) {
+  const existingIds = (await tx.dailyLogItem.findMany({ where: { dailyLogId }, select: { id: true } })).map((r) => r.id);
+  const submittedIds = new Set(items.filter((it) => it.id).map((it) => it.id as string));
+  const removedIds = existingIds.filter((id) => !submittedIds.has(id));
+  if (removedIds.length > 0) {
+    await tx.dailyLogItem.deleteMany({ where: { id: { in: removedIds } } });
+  }
+  for (const it of items) {
+    const { id, ...data } = it;
+    if (id) {
+      await tx.dailyLogItem.update({ where: { id }, data });
+    } else {
+      await tx.dailyLogItem.create({ data: { ...data, dailyLogId } });
+    }
+  }
 }
 
 export async function createDailyLog(projectId: string, fd: FormData) {
@@ -604,11 +634,7 @@ export async function createDailyLog(projectId: string, fd: FormData) {
       },
     });
 
-    // Danh sách việc trong ngày: thay toàn bộ (xóa cũ, tạo lại từ form) — đơn giản hơn CRUD từng dòng
-    await tx.dailyLogItem.deleteMany({ where: { dailyLogId: log.id } });
-    if (items.length > 0) {
-      await tx.dailyLogItem.createMany({ data: items.map((it) => ({ ...it, dailyLogId: log.id })) });
-    }
+    await reconcileDailyLogItems(tx, log.id, items);
   });
   revalidate();
 }
@@ -638,10 +664,7 @@ export async function updateDailyLog(id: string, fd: FormData) {
       },
     });
 
-    await tx.dailyLogItem.deleteMany({ where: { dailyLogId: id } });
-    if (items.length > 0) {
-      await tx.dailyLogItem.createMany({ data: items.map((it) => ({ ...it, dailyLogId: id })) });
-    }
+    await reconcileDailyLogItems(tx, id, items);
   });
   revalidate();
 }
@@ -649,14 +672,18 @@ export async function updateDailyLog(id: string, fd: FormData) {
 /** Tick nhanh 1 việc trong nhật ký ngày — khỏi phải mở form Sửa chỉ để đánh dấu xong */
 export async function toggleDailyLogItem(id: string, isChecked: boolean) {
   await requireUser();
-  await prisma.dailyLogItem.update({ where: { id }, data: { isChecked } });
+  // Đồng bộ % như MilestoneTask (toggleMilestoneTask): tick xong = 100%, bỏ tick = 0%
+  await prisma.dailyLogItem.update({ where: { id }, data: { isChecked, percentComplete: isChecked ? 100 : 0 } });
   revalidate();
 }
 
-/** Sửa nhanh Hạn/PIC của 1 việc nhật ký ngay trên tab ☑️ Việc cần làm — click-to-edit, tự lưu */
-export async function updateDailyLogItemFields(id: string, data: { dueDate?: string | null; pic?: string | null }) {
+/** Sửa nhanh Hạn/PIC/Bắt đầu/% của 1 việc nhật ký ngay trên tab ☑️ Việc cần làm — click-to-edit, tự lưu */
+export async function updateDailyLogItemFields(
+  id: string,
+  data: { dueDate?: string | null; pic?: string | null; startDate?: string | null; percentComplete?: number },
+) {
   await requireUser();
-  const patch: { dueDate?: Date | null; pic?: string | null } = {};
+  const patch: { dueDate?: Date | null; pic?: string | null; startDate?: Date | null; percentComplete?: number; isChecked?: boolean } = {};
   if (data.dueDate !== undefined) {
     if (!data.dueDate) {
       patch.dueDate = null;
@@ -666,6 +693,19 @@ export async function updateDailyLogItemFields(id: string, data: { dueDate?: str
     }
   }
   if (data.pic !== undefined) patch.pic = data.pic || null;
+  if (data.startDate !== undefined) {
+    if (!data.startDate) {
+      patch.startDate = null;
+    } else {
+      const d = safeDate(data.startDate);
+      if (d) patch.startDate = d;
+    }
+  }
+  if (data.percentComplete !== undefined) {
+    const pct = Math.max(0, Math.min(100, Math.round(data.percentComplete)));
+    patch.percentComplete = pct;
+    patch.isChecked = pct >= 100;
+  }
   await prisma.dailyLogItem.update({ where: { id }, data: patch });
   revalidate();
 }

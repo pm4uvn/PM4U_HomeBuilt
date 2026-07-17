@@ -18,7 +18,7 @@ import {
   addPaymentStage, updatePaymentStage, deletePaymentStage, addPaymentTransaction, deletePaymentTransaction,
   addPenaltyRule, updatePenaltyRule, deletePenaltyRule, recordPenaltyEvent, addDiscount, createVariation, decideVariation,
 } from "./actions";
-import { uploadDocument, type UploadState } from "../documents/actions";
+import { uploadDocument, updateDocument, deleteDocument, type UploadState } from "../documents/actions";
 
 const opts = (m: Record<string, string>) =>
   Object.entries(m).map(([v, l]) => (
@@ -1092,7 +1092,28 @@ export function UploadContractFileForm({
 }) {
   return (
     <ModalButton label="+ Tải file hợp đồng" title={`Tải file — ${contractCode}`} variant="default">
-      {(close) => <UploadForm contractId={contractId} projectId={projectId} close={close} />}
+      {(close) => <UploadForm contractId={contractId} projectId={projectId} close={close} defaultDocType="CONTRACT_FILE" />}
+    </ModalButton>
+  );
+}
+
+/**
+ * Tải tài liệu đầu ra/kết quả của hợp đồng (bản vẽ, hồ sơ hoàn công...) — cùng cơ chế với
+ * UploadContractFileForm, chỉ khác loại hồ sơ mặc định và nhãn nút, để phân biệt rõ với file hợp
+ * đồng gốc; vẫn chọn lại được loại hồ sơ khác trong form nếu cần.
+ */
+export function UploadContractDeliverableForm({
+  contractId,
+  projectId,
+  contractCode,
+}: {
+  contractId: string;
+  projectId: string;
+  contractCode: string;
+}) {
+  return (
+    <ModalButton label="+ Tài liệu đầu ra" title={`Tải tài liệu đầu ra — ${contractCode}`} variant="default">
+      {(close) => <UploadForm contractId={contractId} projectId={projectId} close={close} defaultDocType="TECHNICAL_DRAWING" />}
     </ModalButton>
   );
 }
@@ -1101,12 +1122,14 @@ function UploadForm({
   contractId,
   projectId,
   close,
+  defaultDocType,
 }: {
   contractId: string;
   projectId: string;
   close: () => void;
+  defaultDocType: string;
 }) {
-  const [docType, setDocType] = useState("CONTRACT_FILE");
+  const [docType, setDocType] = useState(defaultDocType);
   const [state, action, pending] = useActionState<UploadState, FormData>(
     async (prev, fd) => {
       const result = await uploadDocument(projectId, prev, fd);
@@ -1135,6 +1158,48 @@ function UploadForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** Sửa tiêu đề/loại hồ sơ của 1 tài liệu đã tải lên (không đổi được file — xóa rồi tải lại nếu cần) */
+export function EditDocumentForm({
+  doc,
+}: {
+  doc: { id: string; title: string; docType: string };
+}) {
+  const [docType, setDocType] = useState(doc.docType);
+
+  return (
+    <ModalButton label="Sửa" title="Sửa tài liệu" variant="default">
+      {(close) => (
+        <form
+          action={async (fd) => { await updateDocument(doc.id, {}, fd); close(); }}
+          className="space-y-3"
+        >
+          <Field label="Loại hồ sơ">
+            <Select name="docType" value={docType} onChange={(e) => setDocType(e.target.value)}>
+              {Object.entries(DOC_TYPE).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Tiêu đề *"><Input name="title" defaultValue={doc.title} required /></Field>
+          <SubmitRow />
+        </form>
+      )}
+    </ModalButton>
+  );
+}
+
+export function DeleteDocumentButton({ id, title }: { id: string; title: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => { if (confirm(`Xóa tài liệu "${title}"?`)) void deleteDocument(id); }}
+      className="text-critical text-xs font-semibold hover:underline"
+    >
+      Xóa
+    </button>
   );
 }
 
