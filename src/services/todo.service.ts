@@ -5,7 +5,7 @@
  * Compute-on-read, không lưu bảng riêng — luôn phản ánh đúng trạng thái thật hiện tại.
  */
 import { prisma } from "@/lib/prisma";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, todayVN } from "@/lib/format";
 import { getSignedUrl } from "@/lib/storage";
 
 export type TodoSource = "DAILY_LOG" | "MILESTONE_TASK" | "MILESTONE_CHECKLIST" | "RISK_MITIGATION" | "ISSUE" | "DEFECT";
@@ -73,8 +73,8 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
     }),
   ]);
 
-  const nowDate = new Date();
-  const now = nowDate.toISOString().slice(0, 10);
+  const now = todayVN();
+  const nowDate = new Date(now); // mốc UTC-midnight của ngày hôm nay theo giờ VN — khớp cách dueDate được lưu (cũng UTC-midnight của ngày chọn)
   const items: TodoItem[] = [];
 
   /** Trễ bao nhiêu ngày (làm tròn xuống theo ngày dương lịch), null nếu chưa trễ/chưa có hạn/đã xong */

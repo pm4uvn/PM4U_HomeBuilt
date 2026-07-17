@@ -26,3 +26,12 @@ export const num = (d: unknown): number => (d == null ? 0 : Number(d));
 export const MS_PER_DAY = 86_400_000;
 export const daysBetween = (from: Date | string, to: Date | string) =>
   Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / MS_PER_DAY));
+
+/**
+ * Ngày "hôm nay" theo YYYY-MM-DD — LUÔN tính theo giờ Việt Nam (UTC+7), không dùng
+ * `new Date().toISOString().slice(0,10)` vì toISOString() chuẩn hóa về UTC bất kể máy chủ/trình
+ * duyệt chạy múi giờ nào. Vercel chạy UTC nên nếu tính theo UTC, mọi việc "quá hạn" sẽ trễ mất tới
+ * 7 tiếng đồng hồ vào buổi tối/đêm giờ VN (UTC chưa sang ngày mới trong khi VN đã sang ngày mới) —
+ * gây báo trễ hạn sai/chậm cho toàn bộ tính năng "Trễ hạn" (Việc cần làm, Gantt, Dashboard...).
+ */
+export const todayVN = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, todayVN } from "@/lib/format";
 import type { TodoItem, TodoSource } from "@/services/todo.service";
 import { toggleDailyLogItem, toggleMilestoneTask, toggleChecklistItem, updateDailyLogItemFields, updateMilestoneTaskFields } from "../actions";
 import { toggleRiskMitigationAction } from "../../risks/actions";
@@ -124,7 +124,7 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
   const [picTouched, setPicTouched] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const editable = isEditableSource(item.source);
-  const isLate = !!due && due < new Date().toISOString().slice(0, 10);
+  const isLate = !!due && due < todayVN();
   const picListId = "todo-pic-options";
 
   const commentCount = item.comments?.length ?? 0;
