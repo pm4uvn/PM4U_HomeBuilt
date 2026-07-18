@@ -21,9 +21,9 @@ import {
   uploadDailyLogVoiceNote, uploadMilestoneVoiceNote, uploadMilestoneTaskVoiceNote, uploadDailyLogItemVoiceNote,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
   toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask, updateMilestoneTaskFields,
-  addDailyLogItemComment, deleteDailyLogItemComment, toggleDailyLogItemReaction,
+  addTodoComment, deleteTodoComment, toggleTodoReaction,
 } from "./actions";
-import type { PhaseType } from "@prisma/client";
+import type { PhaseType, TodoCommentSource } from "@prisma/client";
 
 const opts = (m: Record<string, string>) =>
   Object.entries(m).map(([v, l]) => (
@@ -796,13 +796,20 @@ const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢"];
  * mỗi 5s) CHỈ khi khung bình luận đang mở — không thêm hạ tầng WebSocket/Supabase Realtime cho 1
  * tính năng phụ, đơn giản và đủ dùng cho vài người dùng cùng dự án.
  */
-export function DailyLogItemDiscussion({
-  itemId,
+/**
+ * Bình luận + cảm xúc kiểu Facebook — dùng chung cho MỌI nguồn trong "Việc cần làm" (Nhật ký, WBS
+ * tiến độ, Checklist mốc, Rủi ro, Issue Log, Bảo hành), không chỉ riêng Nhật ký như trước — polymorphic
+ * qua (source, entityId) khớp với bảng TodoComment/TodoReaction.
+ */
+export function TodoDiscussion({
+  source,
+  entityId,
   comments,
   reactions,
   myEmail,
 }: {
-  itemId: string;
+  source: TodoCommentSource;
+  entityId: string;
   comments: { id: string; authorEmail: string; body: string; createdAt: string }[];
   reactions: { emoji: string; count: number; reactedByMe: boolean }[];
   myEmail: string;
@@ -824,7 +831,7 @@ export function DailyLogItemDiscussion({
   const totalReactions = reactions.reduce((s, r) => s + r.count, 0);
 
   const react = (e: string) => {
-    startTransition(() => { void toggleDailyLogItemReaction(itemId, e); });
+    startTransition(() => { void toggleTodoReaction(source, entityId, e); });
     setShowPicker(false);
   };
 
@@ -876,7 +883,7 @@ export function DailyLogItemDiscussion({
               {c.authorEmail === myEmail && (
                 <button
                   type="button"
-                  onClick={() => startTransition(() => { void deleteDailyLogItemComment(c.id); })}
+                  onClick={() => startTransition(() => { void deleteTodoComment(c.id); })}
                   className="text-critical text-[10px] opacity-0 group-hover:opacity-100 shrink-0"
                 >
                   ✕
@@ -891,7 +898,7 @@ export function DailyLogItemDiscussion({
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key !== "Enter" || !text.trim()) return;
-                startTransition(() => { void addDailyLogItemComment(itemId, text); });
+                startTransition(() => { void addTodoComment(source, entityId, text); });
                 setText("");
               }}
               placeholder="Viết bình luận cập nhật..."
@@ -903,7 +910,7 @@ export function DailyLogItemDiscussion({
               className="!py-1 !px-2 text-[11px]"
               disabled={!text.trim()}
               onClick={() => {
-                startTransition(() => { void addDailyLogItemComment(itemId, text); });
+                startTransition(() => { void addTodoComment(source, entityId, text); });
                 setText("");
               }}
             >
@@ -1002,8 +1009,9 @@ export function DailyLogItemsView({
                   )}
                 </div>
               )}
-              <DailyLogItemDiscussion
-                itemId={it.id}
+              <TodoDiscussion
+                source="DAILY_LOG"
+                entityId={it.id}
                 comments={it.comments ?? []}
                 reactions={it.reactions ?? []}
                 myEmail={myEmail}
@@ -1051,9 +1059,15 @@ export function DailyLogPhotos({
     <div className="mt-1.5">
       {photos.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-1.5">
-          {photos.map((p) => (
+          {photos.map((p, i) => (
             <div key={p.id} className="relative group shrink-0">
-              <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+              <PreviewButton
+                url={p.url}
+                mimeType="image/jpeg"
+                title={p.title}
+                siblings={photos.map((x) => ({ url: x.url, mimeType: "image/jpeg", title: x.title }))}
+                index={i}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
               </PreviewButton>
@@ -1117,9 +1131,15 @@ export function MilestoneTaskPhotos({
     <div className="mt-1">
       {photos.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-1.5">
-          {photos.map((p) => (
+          {photos.map((p, i) => (
             <div key={p.id} className="relative group shrink-0">
-              <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+              <PreviewButton
+                url={p.url}
+                mimeType="image/jpeg"
+                title={p.title}
+                siblings={photos.map((x) => ({ url: x.url, mimeType: "image/jpeg", title: x.title }))}
+                index={i}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
               </PreviewButton>
@@ -1182,9 +1202,15 @@ export function MilestonePhotos({
     <div className="mt-1.5">
       {photos.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-1.5">
-          {photos.map((p) => (
+          {photos.map((p, i) => (
             <div key={p.id} className="relative group shrink-0">
-              <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+              <PreviewButton
+                url={p.url}
+                mimeType="image/jpeg"
+                title={p.title}
+                siblings={photos.map((x) => ({ url: x.url, mimeType: "image/jpeg", title: x.title }))}
+                index={i}
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
               </PreviewButton>
@@ -1249,9 +1275,15 @@ export function DailyLogItemPhotos({
 
   return (
     <div className="mt-1 inline-flex items-center gap-1.5 flex-wrap">
-      {photos.map((p) => (
+      {photos.map((p, i) => (
         <div key={p.id} className="relative group shrink-0">
-          <PreviewButton url={p.url} mimeType="image/jpeg" title={p.title}>
+          <PreviewButton
+            url={p.url}
+            mimeType="image/jpeg"
+            title={p.title}
+            siblings={photos.map((x) => ({ url: x.url, mimeType: "image/jpeg", title: x.title }))}
+            index={i}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={p.url} alt={p.title} className="w-10 h-10 object-cover rounded border border-line cursor-pointer" />
           </PreviewButton>

@@ -16,11 +16,19 @@ export default async function TodoPage() {
     return <Card><EmptyState title="Chưa có dự án" sub="Tạo dự án ở trang Hợp đồng trước" /></Card>;
   }
 
-  const [items, stakeholders, contracts] = await Promise.all([
+  const [items, stakeholders, contracts, milestones, risks] = await Promise.all([
     getTodoItems(project.id, myEmail),
     prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
     prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } } }),
+    prisma.milestone.findMany({
+      where: { phase: { projectId: project.id } },
+      select: { id: true, name: true, phase: { select: { name: true, sortOrder: true } } },
+      orderBy: [{ phase: { sortOrder: "asc" } }, { plannedDate: "asc" }],
+    }),
+    prisma.riskLog.findMany({ where: { projectId: project.id }, select: { id: true, title: true }, orderBy: { title: "asc" } }),
   ]);
+  const milestoneOptions = milestones.map((m) => ({ id: m.id, name: m.name, phaseName: m.phase.name }));
+  const riskOptions = risks.map((r) => ({ id: r.id, title: r.title }));
 
   // Gợi ý PIC cho ô sửa nhanh — cùng danh sách dùng ở Nhật ký/Gantt chi tiết, vẫn cho gõ tên mới
   const COMMON_PIC_ROLES = ["Chủ đầu tư", "Giám sát công trình", "Kỹ sư kết cấu", "Kỹ sư M&E", "Đơn vị thiết kế"];
@@ -45,11 +53,14 @@ export default async function TodoPage() {
         </span>
       </header>
 
-      {items.length === 0 ? (
-        <Card><EmptyState title="Chưa có việc nào được ghi nhận" sub="Mọi checklist, WBS, rủi ro sẽ tự gộp về đây" /></Card>
-      ) : (
-        <TodoList items={items} picOptions={picOptions} myEmail={myEmail} />
-      )}
+      <TodoList
+        items={items}
+        picOptions={picOptions}
+        myEmail={myEmail}
+        projectId={project.id}
+        milestoneOptions={milestoneOptions}
+        riskOptions={riskOptions}
+      />
     </div>
   );
 }

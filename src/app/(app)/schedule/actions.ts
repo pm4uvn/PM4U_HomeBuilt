@@ -14,7 +14,8 @@ import {
 import { getChecklistForMilestoneName } from "@/lib/milestone-checklists";
 import { getTasksForMilestoneName } from "@/lib/milestone-tasks";
 import { uploadToStorage, removeFromStorage } from "@/lib/storage";
-import type { PhaseType, InspectionMethod, InspectionResult, Weather, Prisma } from "@prisma/client";
+import { todayVN } from "@/lib/format";
+import type { PhaseType, InspectionMethod, InspectionResult, Weather, Prisma, TodoCommentSource } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const dateOrNull = (fd: FormData, k: string) => (str(fd, k) ? new Date(str(fd, k)) : null);
@@ -427,6 +428,24 @@ export async function deleteChecklistItem(itemId: string) {
   revalidate();
 }
 
+/** Thêm nhanh 1 đầu việc checklist chỉ với tên (từ "Việc cần làm") */
+export async function addChecklistItemQuick(milestoneId: string, label: string) {
+  await requireUser();
+  const text = label.trim();
+  if (!text) return;
+  const count = await prisma.milestoneChecklistItem.count({ where: { milestoneId } });
+  await prisma.milestoneChecklistItem.create({ data: { milestoneId, label: text, sortOrder: count } });
+  revalidate();
+}
+
+export async function updateChecklistItemLabel(itemId: string, label: string) {
+  await requireUser();
+  const text = label.trim();
+  if (!text) return;
+  await prisma.milestoneChecklistItem.update({ where: { id: itemId }, data: { label: text } });
+  revalidate();
+}
+
 /**
  * Tick nhanh 1 công việc con trong WBS của milestone — như checklist nhật ký.
  * Đồng bộ luôn percentComplete (0/100) để Gantt chi tiết và Detail Plan luôn khớp nhau —
@@ -461,6 +480,24 @@ export async function addMilestoneTask(milestoneId: string, fd: FormData) {
 export async function deleteMilestoneTask(taskId: string) {
   await requireUser();
   await prisma.milestoneTask.delete({ where: { id: taskId } });
+  revalidate();
+}
+
+/** Thêm nhanh 1 việc con WBS chỉ với tên (từ "Việc cần làm") — durationDays mặc định 1 ngày, sửa lại sau ở Gantt chi tiết nếu cần */
+export async function addMilestoneTaskQuick(milestoneId: string, name: string) {
+  await requireUser();
+  const text = name.trim();
+  if (!text) return;
+  const count = await prisma.milestoneTask.count({ where: { milestoneId } });
+  await prisma.milestoneTask.create({ data: { milestoneId, name: text, durationDays: 1, sortOrder: count } });
+  revalidate();
+}
+
+export async function updateMilestoneTaskLabel(taskId: string, name: string) {
+  await requireUser();
+  const text = name.trim();
+  if (!text) return;
+  await prisma.milestoneTask.update({ where: { id: taskId }, data: { name: text } });
   revalidate();
 }
 
@@ -677,13 +714,13 @@ export async function toggleDailyLogItem(id: string, isChecked: boolean) {
   revalidate();
 }
 
-/** Sửa nhanh Hạn/PIC/Bắt đầu/% của 1 việc nhật ký ngay trên tab ☑️ Việc cần làm — click-to-edit, tự lưu */
+/** Sửa nhanh Hạn/PIC/Bắt đầu/%/tên của 1 việc nhật ký ngay trên tab ☑️ Việc cần làm — click-to-edit, tự lưu */
 export async function updateDailyLogItemFields(
   id: string,
-  data: { dueDate?: string | null; pic?: string | null; startDate?: string | null; percentComplete?: number },
+  data: { dueDate?: string | null; pic?: string | null; startDate?: string | null; percentComplete?: number; label?: string },
 ) {
   await requireUser();
-  const patch: { dueDate?: Date | null; pic?: string | null; startDate?: Date | null; percentComplete?: number; isChecked?: boolean } = {};
+  const patch: { dueDate?: Date | null; pic?: string | null; startDate?: Date | null; percentComplete?: number; isChecked?: boolean; label?: string } = {};
   if (data.dueDate !== undefined) {
     if (!data.dueDate) {
       patch.dueDate = null;
@@ -706,24 +743,55 @@ export async function updateDailyLogItemFields(
     patch.percentComplete = pct;
     patch.isChecked = pct >= 100;
   }
+  if (data.label !== undefined && data.label.trim()) patch.label = data.label.trim();
   await prisma.dailyLogItem.update({ where: { id }, data: patch });
   revalidate();
 }
 
-/** Thêm 1 bình luận cập nhật tiến độ/trạng thái cho 1 việc trong nhật ký — kiểu chat, không cần sửa field cứng */
-export async function addDailyLogItemComment(itemId: string, body: string) {
+/** Xóa 1 việc trong nhật ký ngày (khác deleteDailyLog — cái đó xóa cả bản ghi 1 ngày) */
+export async function deleteDailyLogItem(id: string) {
+  await requireUser();
+  await prisma.dailyLogItem.delete({ where: { id } });
+  revalidate();
+}
+
+/**
+ * Thêm nhanh 1 việc vào nhật ký HÔM NAY (từ "Việc cần làm") — tự tạo bản ghi nhật ký ngày hôm nay
+ * nếu chưa có (weather/workerCount mặc định, sửa lại sau ở trang Nhật ký nếu cần).
+ */
+export async function addDailyLogItemQuick(projectId: string, label: string) {
+  await requireUser();
+  const text = label.trim();
+  if (!text) return;
+  const logDate = new Date(new Date(todayVN()).toDateString());
+  const log = await prisma.dailyLog.upsert({
+    where: { projectId_logDate: { projectId, logDate } },
+    create: { projectId, logDate, weather: "SUNNY", workerCount: 0 },
+    update: {},
+  });
+  const count = await prisma.dailyLogItem.count({ where: { dailyLogId: log.id } });
+  await prisma.dailyLogItem.create({ data: { dailyLogId: log.id, label: text, sortOrder: count } });
+  revalidate();
+}
+
+/**
+ * Bình luận + cảm xúc chung cho MỌI nguồn trong "Việc cần làm" (Nhật ký, WBS tiến độ, Checklist
+ * mốc, Rủi ro, Issue Log, Bảo hành) — polymorphic qua (source, entityId), thay cho hệ thống cũ chỉ
+ * gắn được với DailyLogItem. `source` dùng đúng giá trị TodoSource ở src/services/todo.service.ts.
+ */
+export async function addTodoComment(source: TodoCommentSource, entityId: string, body: string) {
   const user = await requireUser();
   const text = body.trim();
   if (!text) return;
-  await prisma.dailyLogItemComment.create({
-    data: { dailyLogItemId: itemId, authorEmail: user.email ?? "unknown", body: text },
+  await prisma.todoComment.create({
+    data: { source, entityId, authorEmail: user.email ?? "unknown", body: text },
   });
   revalidate();
 }
 
-export async function deleteDailyLogItemComment(commentId: string) {
+export async function deleteTodoComment(commentId: string) {
   await requireUser();
-  await prisma.dailyLogItemComment.delete({ where: { id: commentId } });
+  await prisma.todoComment.delete({ where: { id: commentId } });
   revalidate();
 }
 
@@ -732,15 +800,15 @@ export async function deleteDailyLogItemComment(commentId: string) {
  * thả được nhiều loại cùng lúc kiểu Slack): bấm lại đúng emoji đang thả thì gỡ ra, bấm emoji khác thì
  * thay thế cảm xúc cũ bằng cảm xúc mới.
  */
-export async function toggleDailyLogItemReaction(itemId: string, emoji: string) {
+export async function toggleTodoReaction(source: TodoCommentSource, entityId: string, emoji: string) {
   const user = await requireUser();
   const authorEmail = user.email ?? "unknown";
-  const existing = await prisma.dailyLogItemReaction.findFirst({
-    where: { dailyLogItemId: itemId, authorEmail },
+  const existing = await prisma.todoReaction.findFirst({
+    where: { source, entityId, authorEmail },
   });
-  if (existing) await prisma.dailyLogItemReaction.delete({ where: { id: existing.id } });
+  if (existing) await prisma.todoReaction.delete({ where: { id: existing.id } });
   if (!existing || existing.emoji !== emoji) {
-    await prisma.dailyLogItemReaction.create({ data: { dailyLogItemId: itemId, emoji, authorEmail } });
+    await prisma.todoReaction.create({ data: { source, entityId, emoji, authorEmail } });
   }
   revalidate();
 }

@@ -84,6 +84,23 @@ export async function deleteDefect(defectId: string) {
   revalidate();
 }
 
+/** Thêm nhanh 1 khiếm khuyết chỉ với tiêu đề (từ "Việc cần làm") — loại mặc định OTHER, sửa chi tiết sau ở trang Bảo hành */
+export async function addDefectQuick(projectId: string, title: string) {
+  await requireUser();
+  const text = title.trim();
+  if (!text) return;
+  await prisma.defectLog.create({ data: { projectId, category: "OTHER", title: text } });
+  revalidate();
+}
+
+export async function updateDefectTitle(defectId: string, title: string) {
+  await requireUser();
+  const text = title.trim();
+  if (!text) return;
+  await prisma.defectLog.update({ where: { id: defectId }, data: { title: text } });
+  revalidate();
+}
+
 export async function updateDefectStatus(defectId: string, status: DefectStatus) {
   const user = await requireUser();
   const defect = await prisma.defectLog.update({

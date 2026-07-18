@@ -44,8 +44,6 @@ export default async function DailyLogPage() {
             vatTuDuAn: { select: { vatTu: { select: { tenVatTu: true } } } },
             document: { select: { title: true } },
             contract: { select: { code: true, title: true, vendor: { select: { name: true } } } },
-            comments: { orderBy: { createdAt: "asc" } },
-            reactions: true,
             photos: { where: { docType: { in: ["SITE_PHOTO", "VOICE_NOTE"] } }, orderBy: { uploadedAt: "asc" } },
           },
         },
@@ -130,6 +128,30 @@ export default async function DailyLogPage() {
     ),
   );
 
+  // Bình luận + cảm xúc (bảng chung TodoComment/TodoReaction, polymorphic source="DAILY_LOG")
+  const allItemIds = dailyLogs.flatMap((d) => d.items.map((it) => it.id));
+  const [commentRows, reactionRows] = allItemIds.length
+    ? await Promise.all([
+        prisma.todoComment.findMany({ where: { source: "DAILY_LOG", entityId: { in: allItemIds } }, orderBy: { createdAt: "asc" } }),
+        prisma.todoReaction.findMany({ where: { source: "DAILY_LOG", entityId: { in: allItemIds } } }),
+      ])
+    : [[], []];
+  const commentsByItem = new Map<string, { id: string; authorEmail: string; body: string; createdAt: string }[]>();
+  for (const c of commentRows) {
+    const arr = commentsByItem.get(c.entityId) ?? [];
+    arr.push({ id: c.id, authorEmail: c.authorEmail, body: c.body, createdAt: c.createdAt.toISOString() });
+    commentsByItem.set(c.entityId, arr);
+  }
+  const reactionsByItem = new Map<string, Map<string, { count: number; reactedByMe: boolean }>>();
+  for (const r of reactionRows) {
+    const groups = reactionsByItem.get(r.entityId) ?? new Map<string, { count: number; reactedByMe: boolean }>();
+    const g = groups.get(r.emoji) ?? { count: 0, reactedByMe: false };
+    g.count++;
+    if (r.authorEmail === myEmail) g.reactedByMe = true;
+    groups.set(r.emoji, g);
+    reactionsByItem.set(r.entityId, groups);
+  }
+
   return (
     <div className="space-y-3">
       <ScheduleTabs />
@@ -178,29 +200,20 @@ export default async function DailyLogPage() {
                   <td className="py-2 pr-2 text-ink-2">
                     {d.items.length > 0 ? (
                       <DailyLogItemsView
-                        items={d.items.map((it) => {
-                          const reactionGroups = new Map<string, { count: number; reactedByMe: boolean }>();
-                          for (const r of it.reactions) {
-                            const g = reactionGroups.get(r.emoji) ?? { count: 0, reactedByMe: false };
-                            g.count++;
-                            if (r.authorEmail === myEmail) g.reactedByMe = true;
-                            reactionGroups.set(r.emoji, g);
-                          }
-                          return {
-                            id: it.id, label: it.label, isChecked: it.isChecked,
-                            dueDate: it.dueDate?.toISOString() ?? null,
-                            milestoneName: it.milestone?.name ?? null,
-                            vatTuName: it.vatTuDuAn?.vatTu.tenVatTu ?? null,
-                            workType: it.workType,
-                            documentTitle: it.document?.title ?? null,
-                            contractLabel: it.contract ? `${it.contract.code} — ${it.contract.title} (${it.contract.vendor.name})` : null,
-                            pic: it.pic,
-                            comments: it.comments.map((c) => ({ id: c.id, authorEmail: c.authorEmail, body: c.body, createdAt: c.createdAt.toISOString() })),
-                            reactions: [...reactionGroups.entries()].map(([emoji, g]) => ({ emoji, ...g })),
-                            photos: photosByItem.get(it.id) ?? [],
-                            voiceNotes: voiceNotesByItem.get(it.id) ?? [],
-                          };
-                        })}
+                        items={d.items.map((it) => ({
+                          id: it.id, label: it.label, isChecked: it.isChecked,
+                          dueDate: it.dueDate?.toISOString() ?? null,
+                          milestoneName: it.milestone?.name ?? null,
+                          vatTuName: it.vatTuDuAn?.vatTu.tenVatTu ?? null,
+                          workType: it.workType,
+                          documentTitle: it.document?.title ?? null,
+                          contractLabel: it.contract ? `${it.contract.code} — ${it.contract.title} (${it.contract.vendor.name})` : null,
+                          pic: it.pic,
+                          comments: commentsByItem.get(it.id) ?? [],
+                          reactions: [...(reactionsByItem.get(it.id) ?? new Map()).entries()].map(([emoji, g]) => ({ emoji, ...g })),
+                          photos: photosByItem.get(it.id) ?? [],
+                          voiceNotes: voiceNotesByItem.get(it.id) ?? [],
+                        }))}
                         dayMilestoneNames={d.milestones.map((m) => m.name)}
                         dayVatTuNames={d.vatTuDuAn.map((v) => v.vatTu.tenVatTu)}
                         myEmail={myEmail}

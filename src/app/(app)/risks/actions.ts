@@ -97,6 +97,30 @@ export async function toggleRiskMitigationAction(id: string, isDone: boolean) {
   revalidate();
 }
 
+/** Thêm 1 hoạt động giảm thiểu rủi ro riêng lẻ (ngoài lúc tạo hàng loạt từ template) — dùng ở "Việc cần làm" */
+export async function addRiskMitigationAction(riskId: string, label: string) {
+  await requireUser();
+  const text = label.trim();
+  if (!text) return;
+  const count = await prisma.riskMitigationAction.count({ where: { riskId } });
+  await prisma.riskMitigationAction.create({ data: { riskId, label: text, sortOrder: count } });
+  revalidate();
+}
+
+export async function updateRiskMitigationActionLabel(id: string, label: string) {
+  await requireUser();
+  const text = label.trim();
+  if (!text) return;
+  await prisma.riskMitigationAction.update({ where: { id }, data: { label: text } });
+  revalidate();
+}
+
+export async function deleteRiskMitigationAction(id: string) {
+  await requireUser();
+  await prisma.riskMitigationAction.delete({ where: { id } });
+  revalidate();
+}
+
 export async function updateRiskStatus(riskId: string, status: RiskStatus) {
   const user = await requireUser();
   const risk = await prisma.riskLog.update({

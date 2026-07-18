@@ -31,8 +31,8 @@ export type TodoItem = {
   // Thứ tự giai đoạn (Phase.sortOrder) — chỉ có ở MILESTONE_TASK/MILESTONE_CHECKLIST (2 nguồn duy
   // nhất gắn trực tiếp với 1 giai đoạn thi công cụ thể), dùng để sắp WBS theo đúng trình tự I → II → III...
   phaseOrder: number | null;
-  // Chỉ DAILY_LOG có bình luận/cảm xúc (gắn ở cấp DailyLogItem); DAILY_LOG và MILESTONE_TASK đều có
-  // ảnh/ghi âm riêng (gắn ở cấp DailyLogItem/MilestoneTask) — nguồn khác luôn rỗng.
+  // Mọi nguồn đều có bình luận/cảm xúc chung (bảng TodoComment/TodoReaction, polymorphic theo
+  // source+id). Riêng ảnh/ghi âm chỉ DAILY_LOG và MILESTONE_TASK có (gắn ở cấp DailyLogItem/MilestoneTask).
   comments?: TodoComment[];
   reactions?: TodoReaction[];
   photos?: TodoMedia[];
@@ -45,8 +45,6 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       where: { dailyLog: { projectId } },
       include: {
         dailyLog: { select: { logDate: true } },
-        comments: { orderBy: { createdAt: "asc" } },
-        reactions: true,
         photos: { where: { docType: { in: ["SITE_PHOTO", "VOICE_NOTE"] } }, orderBy: { uploadedAt: "asc" } },
       },
       orderBy: { dueDate: "asc" },
@@ -86,13 +84,6 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
 
   for (const it of dailyLogItems) {
     const dueDate = it.dueDate?.toISOString() ?? null;
-    const reactionGroups = new Map<string, { count: number; reactedByMe: boolean }>();
-    for (const r of it.reactions) {
-      const g = reactionGroups.get(r.emoji) ?? { count: 0, reactedByMe: false };
-      g.count++;
-      if (r.authorEmail === myEmail) g.reactedByMe = true;
-      reactionGroups.set(r.emoji, g);
-    }
     const urls = await Promise.all(it.photos.map((doc) => getSignedUrl(doc.fileUrl)));
     const resolvedDocs = it.photos.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title, docType: doc.docType })).filter((d) => d.url);
     items.push({
@@ -109,8 +100,6 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       href: "/schedule/daily-log",
       projectId,
       phaseOrder: null,
-      comments: it.comments.map((c) => ({ id: c.id, authorEmail: c.authorEmail, body: c.body, createdAt: c.createdAt.toISOString() })),
-      reactions: [...reactionGroups.entries()].map(([emoji, g]) => ({ emoji, ...g })),
       photos: resolvedDocs.filter((d) => d.docType === "SITE_PHOTO"),
       voiceNotes: resolvedDocs.filter((d) => d.docType === "VOICE_NOTE"),
     });
@@ -216,6 +205,45 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       projectId,
       phaseOrder: null,
     });
+  }
+
+  // Bình luận/cảm xúc chung cho mọi nguồn — gộp theo (source, entityId), fetch 1 lần cho toàn bộ
+  // danh sách thay vì N+1 query. OR theo từng nhóm nguồn (tối đa 6 điều kiện) để tận dụng index.
+  const idsBySource = new Map<TodoSource, string[]>();
+  for (const it of items) {
+    const arr = idsBySource.get(it.source) ?? [];
+    arr.push(it.id);
+    idsBySource.set(it.source, arr);
+  }
+  const sourceFilters = [...idsBySource.entries()].map(([source, ids]) => ({ source, entityId: { in: ids } }));
+  const [commentRows, reactionRows] = sourceFilters.length
+    ? await Promise.all([
+        prisma.todoComment.findMany({ where: { OR: sourceFilters }, orderBy: { createdAt: "asc" } }),
+        prisma.todoReaction.findMany({ where: { OR: sourceFilters } }),
+      ])
+    : [[], []];
+
+  const commentsByKey = new Map<string, TodoComment[]>();
+  for (const c of commentRows) {
+    const key = `${c.source}:${c.entityId}`;
+    const arr = commentsByKey.get(key) ?? [];
+    arr.push({ id: c.id, authorEmail: c.authorEmail, body: c.body, createdAt: c.createdAt.toISOString() });
+    commentsByKey.set(key, arr);
+  }
+  const reactionsByKey = new Map<string, Map<string, { count: number; reactedByMe: boolean }>>();
+  for (const r of reactionRows) {
+    const key = `${r.source}:${r.entityId}`;
+    const groups = reactionsByKey.get(key) ?? new Map<string, { count: number; reactedByMe: boolean }>();
+    const g = groups.get(r.emoji) ?? { count: 0, reactedByMe: false };
+    g.count++;
+    if (r.authorEmail === myEmail) g.reactedByMe = true;
+    groups.set(r.emoji, g);
+    reactionsByKey.set(key, groups);
+  }
+  for (const it of items) {
+    const key = `${it.source}:${it.id}`;
+    it.comments = commentsByKey.get(key) ?? [];
+    it.reactions = [...(reactionsByKey.get(key) ?? new Map()).entries()].map(([emoji, g]) => ({ emoji, ...g }));
   }
 
   // Ưu tiên: trễ hạn trước -> có hạn gần nhất -> không có hạn xếp cuối

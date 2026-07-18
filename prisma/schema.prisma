@@ -43,6 +43,7 @@ model Project {
   budgetPlanned  Decimal  @db.Decimal(18, 0) // tổng ngân sách dự kiến
   status         ProjectStatus @default(PREPARING)
   emailNotificationsEnabled Boolean @default(true) // gửi email nhắc cảnh báo (Alert) qua cron — bật mặc định
+  shareToken     String?  @unique // token xem "Tiến độ trực quan" công khai (/share/[token]), null = chưa bật chia sẻ
 
   vendors        Vendor[]
   contracts      Contract[]
@@ -638,33 +639,45 @@ model DailyLogItem {
   workType    DailyLogWorkType? // loại công việc — dùng lọc/báo cáo theo nhóm (Pháp lý, Mặt bằng, Ép cọc...)
   pic         String?    // người/đơn vị phụ trách (PIC) — combobox gợi ý từ stakeholder/nhà thầu, vẫn gõ tên mới được
   sortOrder   Int        @default(0)
-  comments    DailyLogItemComment[]  // bình luận cập nhật tiến độ theo thời gian thực, kiểu Facebook
-  reactions   DailyLogItemReaction[] // thả cảm xúc (👍❤️😂😮😢) — 1 người chỉ thả 1 lần / loại cảm xúc / việc
   photos      Document[] @relation("DailyLogItemPhotos") // ảnh/ghi âm hiện trường gắn thẳng vào việc này (khác documentId — đây là bằng chứng thi công, không phải hồ sơ liên quan)
 }
 
-/** Bình luận trao đổi trên 1 việc cụ thể trong nhật ký — cập nhật trạng thái/tiến độ dạng chat thay vì phải sửa lại field cứng */
-model DailyLogItemComment {
-  id             String       @id @default(cuid())
-  dailyLogItemId String
-  dailyLogItem   DailyLogItem @relation(fields: [dailyLogItemId], references: [id], onDelete: Cascade)
-  authorEmail    String
-  body           String
-  createdAt      DateTime     @default(now())
-
-  @@index([dailyLogItemId])
+/** Nguồn của 1 việc trong "Việc cần làm" — dùng để phân loại bình luận/cảm xúc chung (polymorphic) */
+enum TodoCommentSource {
+  DAILY_LOG
+  MILESTONE_TASK
+  MILESTONE_CHECKLIST
+  RISK_MITIGATION
+  ISSUE
+  DEFECT
 }
 
-/** Thả cảm xúc kiểu Facebook trên 1 việc — toggle bật/tắt theo (việc, cảm xúc, người thả) */
-model DailyLogItemReaction {
-  id             String       @id @default(cuid())
-  dailyLogItemId String
-  dailyLogItem   DailyLogItem @relation(fields: [dailyLogItemId], references: [id], onDelete: Cascade)
-  emoji          String
-  authorEmail    String
-  createdAt      DateTime     @default(now())
+/**
+ * Bình luận chung cho MỌI loại việc trong "Việc cần làm" (Nhật ký, WBS tiến độ, Checklist mốc, Rủi
+ * ro, Issue Log, Bảo hành) — polymorphic qua (source, entityId) thay vì FK cứng, vì entityId trỏ
+ * tới 6 bảng khác nhau tùy nguồn (giống cách Alert.refTable/refId đã dùng trong app).
+ */
+model TodoComment {
+  id          String            @id @default(cuid())
+  source      TodoCommentSource
+  entityId    String
+  authorEmail String
+  body        String
+  createdAt   DateTime          @default(now())
 
-  @@unique([dailyLogItemId, emoji, authorEmail])
+  @@index([source, entityId])
+}
+
+/** Cảm xúc kiểu Facebook chung cho mọi loại việc — toggle theo (source, entityId, emoji, người thả) */
+model TodoReaction {
+  id          String            @id @default(cuid())
+  source      TodoCommentSource
+  entityId    String
+  emoji       String
+  authorEmail String
+  createdAt   DateTime          @default(now())
+
+  @@unique([source, entityId, emoji, authorEmail])
 }
 
 enum Weather {

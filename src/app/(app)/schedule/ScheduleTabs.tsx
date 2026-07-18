@@ -9,6 +9,7 @@ const TABS = [
   { href: "/schedule/daily-log", label: "📆 Nhật ký" },
   { href: "/schedule/checklist-templates", label: "✅ Mẫu Checklist" },
   { href: "/schedule/knowledge", label: "📚 Kiến thức" },
+  { href: "/schedule/timeline", label: "🖼️ Tiến độ trực quan" },
 ];
 
 /** Tab điều hướng giữa Tiến độ, Nhật ký và Mẫu Checklist — cùng module, khác route */

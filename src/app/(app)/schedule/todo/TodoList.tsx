@@ -5,12 +5,21 @@ import Link from "next/link";
 import { Card } from "@/components/ui";
 import { fmtDate, todayVN } from "@/lib/format";
 import type { TodoItem, TodoSource } from "@/services/todo.service";
-import { toggleDailyLogItem, toggleMilestoneTask, toggleChecklistItem, updateDailyLogItemFields, updateMilestoneTaskFields } from "../actions";
-import { toggleRiskMitigationAction } from "../../risks/actions";
-import { updateIssueStatus } from "../../issues/actions";
-import { updateDefectStatus } from "../../defects/actions";
-import { DailyLogItemDiscussion, DailyLogItemPhotos, MilestoneTaskPhotos, VoiceNotes } from "../forms";
-import { uploadMilestoneTaskVoiceNote, deleteMilestoneTaskPhoto, uploadDailyLogItemVoiceNote, deleteDailyLogItemPhoto } from "../actions";
+import type { TodoCommentSource } from "@prisma/client";
+import {
+  toggleDailyLogItem, toggleMilestoneTask, toggleChecklistItem, updateDailyLogItemFields, updateMilestoneTaskFields,
+  deleteDailyLogItem, addDailyLogItemQuick,
+  deleteMilestoneTask, updateMilestoneTaskLabel, addMilestoneTaskQuick,
+  deleteChecklistItem, updateChecklistItemLabel, addChecklistItemQuick,
+  uploadMilestoneTaskVoiceNote, deleteMilestoneTaskPhoto, uploadDailyLogItemVoiceNote, deleteDailyLogItemPhoto,
+} from "../actions";
+import { toggleRiskMitigationAction, deleteRiskMitigationAction, updateRiskMitigationActionLabel, addRiskMitigationAction } from "../../risks/actions";
+import { updateIssueStatus, deleteIssue, updateIssueTitle, addIssueQuick } from "../../issues/actions";
+import { updateDefectStatus, deleteDefect, updateDefectTitle, addDefectQuick } from "../../defects/actions";
+import { TodoDiscussion, DailyLogItemPhotos, MilestoneTaskPhotos, VoiceNotes } from "../forms";
+
+export type MilestoneOption = { id: string; name: string; phaseName: string };
+export type RiskOption = { id: string; title: string };
 
 const SOURCE_LABEL: Record<TodoSource, string> = {
   DAILY_LOG: "📆 Nhật ký",
@@ -77,6 +86,50 @@ async function updatePercent(item: TodoItem, value: number) {
   if (item.source === "MILESTONE_TASK") return updateMilestoneTaskFields(item.id, { percentComplete: value });
 }
 
+/** Sửa tên/tiêu đề — mọi nguồn đều sửa được (khác Hạn/PIC/Bắt đầu/% chỉ 2 nguồn có field riêng) */
+async function updateLabel(item: TodoItem, label: string) {
+  switch (item.source) {
+    case "DAILY_LOG": return updateDailyLogItemFields(item.id, { label });
+    case "MILESTONE_TASK": return updateMilestoneTaskLabel(item.id, label);
+    case "MILESTONE_CHECKLIST": return updateChecklistItemLabel(item.id, label);
+    case "RISK_MITIGATION": return updateRiskMitigationActionLabel(item.id, label);
+    case "ISSUE": return updateIssueTitle(item.id, label);
+    case "DEFECT": return updateDefectTitle(item.id, label);
+  }
+}
+
+/** Xóa hẳn — mọi nguồn đều xóa được */
+async function deleteItem(item: TodoItem) {
+  switch (item.source) {
+    case "DAILY_LOG": return deleteDailyLogItem(item.id);
+    case "MILESTONE_TASK": return deleteMilestoneTask(item.id);
+    case "MILESTONE_CHECKLIST": return deleteChecklistItem(item.id);
+    case "RISK_MITIGATION": return deleteRiskMitigationAction(item.id);
+    case "ISSUE": return deleteIssue(item.id);
+    case "DEFECT": return deleteDefect(item.id);
+  }
+}
+
+/**
+ * Thêm mới — DAILY_LOG/ISSUE/DEFECT chỉ cần tên (tự gắn vào nhật ký hôm nay / tạo bản ghi mới với
+ * loại mặc định OTHER). MILESTONE_TASK/MILESTONE_CHECKLIST/RISK_MITIGATION cần chọn cha (mốc/rủi
+ * ro) trước vì đây là việc con — không có cha thì không biết gắn vào đâu.
+ */
+async function addQuickItem(source: TodoSource, projectId: string, label: string, parentId: string) {
+  switch (source) {
+    case "DAILY_LOG": return addDailyLogItemQuick(projectId, label);
+    case "MILESTONE_TASK": return parentId ? addMilestoneTaskQuick(parentId, label) : undefined;
+    case "MILESTONE_CHECKLIST": return parentId ? addChecklistItemQuick(parentId, label) : undefined;
+    case "RISK_MITIGATION": return parentId ? addRiskMitigationAction(parentId, label) : undefined;
+    case "ISSUE": return addIssueQuick(projectId, label);
+    case "DEFECT": return addDefectQuick(projectId, label);
+  }
+}
+
+/** Nguồn nào thêm mới cần chọn mốc/rủi ro cha trước (việc con), nguồn nào thêm thẳng được luôn */
+const needsParent = (source: TodoSource) =>
+  source === "MILESTONE_TASK" || source === "MILESTONE_CHECKLIST" || source === "RISK_MITIGATION";
+
 /** input type="date" cho gõ tay tới 6 chữ số năm khi chưa gõ xong — chỉ lưu DB khi năm hợp lý */
 const isSaneDate = (iso: string) => {
   const y = new Date(iso).getFullYear();
@@ -112,8 +165,7 @@ function naturalCompare(a: string, b: string): number {
  * remount lấy state mới mỗi khi dữ liệu đổi từ nơi khác (Gantt chi tiết, Detail Plan, Nhật ký) —
  * đảm bảo DB luôn là nguồn duy nhất.
  */
-/** Nguồn nào có chỗ gắn bình luận/ảnh/ghi âm — chỉ DAILY_LOG (bình luận, cảm xúc, ảnh, ghi âm) và MILESTONE_TASK (ảnh, ghi âm) */
-const hasAttachments = (source: TodoSource) => source === "DAILY_LOG" || source === "MILESTONE_TASK";
+/** Mọi nguồn đều bình luận/thả cảm xúc được; riêng ảnh/ghi âm chỉ DAILY_LOG và MILESTONE_TASK có chỗ lưu trong DB (xem nhánh render bên dưới) */
 
 function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willBeDone: boolean) => void; myEmail: string }) {
   const [isPending, startTransition] = useTransition();
@@ -123,6 +175,8 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
   const [pic, setPic] = useState(item.pic ?? "");
   const [picTouched, setPicTouched] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [editingLabel, setEditingLabel] = useState(false);
+  const [label, setLabel] = useState(item.label);
   const editable = isEditableSource(item.source);
   const isLate = !!due && due < todayVN();
   const picListId = "todo-pic-options";
@@ -131,7 +185,7 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
   const reactionCount = item.reactions?.reduce((s, r) => s + r.count, 0) ?? 0;
   const photoCount = item.photos?.length ?? 0;
   const voiceCount = item.voiceNotes?.length ?? 0;
-  const canExpand = hasAttachments(item.source);
+  const canExpand = true; // mọi nguồn đều bình luận được — luôn cho xổ ra
 
   return (
     <>
@@ -159,8 +213,27 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
                 {expanded ? "▾" : "▸"}
               </button>
             )}
-            <div className="min-w-0">
-              <div>{item.label}</div>
+            <div className="min-w-0 flex-1">
+              {editingLabel ? (
+                <input
+                  type="text"
+                  autoFocus
+                  value={label}
+                  className={EDIT_INPUT}
+                  onChange={(e) => setLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  onBlur={() => {
+                    setEditingLabel(false);
+                    const trimmed = label.trim();
+                    if (!trimmed) { setLabel(item.label); return; }
+                    if (trimmed !== item.label) startTransition(() => { void updateLabel(item, trimmed); });
+                  }}
+                />
+              ) : (
+                <div className="cursor-text hover:bg-page rounded px-0.5 -mx-0.5" onClick={() => setEditingLabel(true)} title="Bấm để sửa">
+                  {item.label}
+                </div>
+              )}
               {/* Luôn hiện chỉ dấu bình luận/cảm xúc/ảnh/ghi âm ngay dưới tên việc, không cần mở rộng mới thấy có gì */}
               {(commentCount > 0 || reactionCount > 0 || photoCount > 0 || voiceCount > 0) && (
                 <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted">
@@ -258,23 +331,37 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
           {item.delayDays != null ? `⚠️ ${item.delayDays}d` : "—"}
         </td>
         <td className="py-2">
-          <Link href={item.href} className="text-brand text-xs font-semibold hover:underline whitespace-nowrap">
-            Xem →
-          </Link>
+          <div className="flex items-center gap-2 justify-end whitespace-nowrap">
+            <Link href={item.href} className="text-brand text-xs font-semibold hover:underline">
+              Xem →
+            </Link>
+            <button
+              type="button"
+              title="Xóa việc này"
+              onClick={() => {
+                if (!confirm(`Xóa "${item.label}"?`)) return;
+                startTransition(() => { void deleteItem(item); });
+              }}
+              className="text-critical text-xs opacity-60 hover:opacity-100"
+            >
+              🗑
+            </button>
+          </div>
         </td>
       </tr>
       {expanded && canExpand && (
         <tr className="border-b border-grid last:border-0">
           <td></td>
           <td colSpan={9} className="pb-3 pt-1">
-            {item.source === "DAILY_LOG" ? (
-              <div className="space-y-1.5">
-                <DailyLogItemDiscussion
-                  itemId={item.id}
-                  comments={item.comments ?? []}
-                  reactions={item.reactions ?? []}
-                  myEmail={myEmail}
-                />
+            <div className="space-y-1.5">
+              <TodoDiscussion
+                source={item.source as TodoCommentSource}
+                entityId={item.id}
+                comments={item.comments ?? []}
+                reactions={item.reactions ?? []}
+                myEmail={myEmail}
+              />
+              {item.source === "DAILY_LOG" && (
                 <div className="flex flex-wrap gap-3 items-start">
                   <DailyLogItemPhotos itemId={item.id} projectId={item.projectId} photos={item.photos ?? []} />
                   <VoiceNotes
@@ -285,19 +372,20 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
                     onDelete={deleteDailyLogItemPhoto}
                   />
                 </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-3 items-start">
-                <MilestoneTaskPhotos taskId={item.id} projectId={item.projectId} photos={item.photos ?? []} />
-                <VoiceNotes
-                  notes={item.voiceNotes ?? []}
-                  entityId={item.id}
-                  projectId={item.projectId}
-                  uploadAction={uploadMilestoneTaskVoiceNote}
-                  onDelete={deleteMilestoneTaskPhoto}
-                />
-              </div>
-            )}
+              )}
+              {item.source === "MILESTONE_TASK" && (
+                <div className="flex flex-wrap gap-3 items-start">
+                  <MilestoneTaskPhotos taskId={item.id} projectId={item.projectId} photos={item.photos ?? []} />
+                  <VoiceNotes
+                    notes={item.voiceNotes ?? []}
+                    entityId={item.id}
+                    projectId={item.projectId}
+                    uploadAction={uploadMilestoneTaskVoiceNote}
+                    onDelete={deleteMilestoneTaskPhoto}
+                  />
+                </div>
+              )}
+            </div>
           </td>
         </tr>
       )}
@@ -305,10 +393,82 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
   );
 }
 
+const ADDABLE_SOURCES: TodoSource[] = ["DAILY_LOG", "MILESTONE_TASK", "MILESTONE_CHECKLIST", "RISK_MITIGATION", "ISSUE", "DEFECT"];
+
+/** Form thêm nhanh 1 việc mới — chọn Nguồn trước, WBS/Checklist/Rủi ro cần chọn thêm mốc/rủi ro cha vì là việc con */
+function AddTodoForm({
+  projectId, milestoneOptions, riskOptions,
+}: {
+  projectId: string; milestoneOptions: MilestoneOption[]; riskOptions: RiskOption[];
+}) {
+  const [, startTransition] = useTransition();
+  const [source, setSource] = useState<TodoSource>("DAILY_LOG");
+  const [parentId, setParentId] = useState("");
+  const [label, setLabel] = useState("");
+  const [pending, setPending] = useState(false);
+
+  const parentRequired = needsParent(source);
+  const parentOptions = source === "RISK_MITIGATION" ? riskOptions.map((r) => ({ id: r.id, label: r.title })) : milestoneOptions.map((m) => ({ id: m.id, label: `${m.phaseName} · ${m.name}` }));
+  const canSubmit = label.trim() && (!parentRequired || parentId);
+
+  const submit = () => {
+    if (!canSubmit) return;
+    const text = label.trim();
+    setPending(true);
+    startTransition(async () => {
+      await addQuickItem(source, projectId, text, parentId);
+      setPending(false);
+      setLabel("");
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap bg-page rounded-lg p-2">
+      <select
+        value={source}
+        onChange={(e) => { setSource(e.target.value as TodoSource); setParentId(""); }}
+        className="text-[12px] border border-line rounded px-2 py-1.5 bg-surface"
+      >
+        {ADDABLE_SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABEL[s]}</option>)}
+      </select>
+      {parentRequired && (
+        <select
+          value={parentId}
+          onChange={(e) => setParentId(e.target.value)}
+          className="text-[12px] border border-line rounded px-2 py-1.5 bg-surface min-w-[160px] max-w-[260px]"
+        >
+          <option value="">
+            {source === "RISK_MITIGATION" ? "— Chọn rủi ro —" : "— Chọn mốc —"}
+          </option>
+          {parentOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      )}
+      <input
+        type="text"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+        placeholder={parentRequired && !parentId ? "Chọn cha trước..." : "Tên việc mới..."}
+        disabled={parentRequired && !parentId}
+        className="flex-1 min-w-[180px] text-[13px] border border-line rounded px-2 py-1.5 bg-surface outline-none focus:border-brand disabled:opacity-50"
+      />
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!canSubmit || pending}
+        className="text-[13px] font-semibold rounded-lg px-3 py-1.5 bg-brand text-white disabled:opacity-40"
+      >
+        {pending ? "Đang thêm..." : "+ Thêm"}
+      </button>
+    </div>
+  );
+}
+
 export function TodoList({
-  items: rawItems, picOptions = [], myEmail = "",
+  items: rawItems, picOptions = [], myEmail = "", projectId, milestoneOptions = [], riskOptions = [],
 }: {
   items: TodoItem[]; picOptions?: string[]; myEmail?: string;
+  projectId: string; milestoneOptions?: MilestoneOption[]; riskOptions?: RiskOption[];
 }) {
   const [filter, setFilter] = useState<FilterKey>("ALL");
   // Ghi đè isDone cục bộ ngay khi bấm tick (2 chiều: xong <-> chưa xong) để phản hồi tức thì, không
@@ -383,6 +543,8 @@ export function TodoList({
       <datalist id="todo-pic-options">
         {picOptions.map((p) => <option key={p} value={p} />)}
       </datalist>
+
+      <AddTodoForm projectId={projectId} milestoneOptions={milestoneOptions} riskOptions={riskOptions} />
 
       <div className="flex gap-2 flex-wrap">
         {FILTERS.map((f) => (

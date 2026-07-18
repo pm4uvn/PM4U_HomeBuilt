@@ -84,7 +84,14 @@ export function KnowledgeBaseList({ articles }: { articles: KnowledgeArticle[] }
                   {a.images && a.images.length > 0 && (
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
                       {a.images.map((src, i) => (
-                        <PreviewButton key={src} url={src} mimeType="image/jpeg" title={`${a.topic} — ảnh ${i + 1}`}>
+                        <PreviewButton
+                          key={src}
+                          url={src}
+                          mimeType="image/jpeg"
+                          title={`${a.topic} — ảnh ${i + 1}`}
+                          siblings={a.images!.map((s, j) => ({ url: s, mimeType: "image/jpeg", title: `${a.topic} — ảnh ${j + 1}` }))}
+                          index={i}
+                        >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={src}

@@ -103,6 +103,23 @@ export async function deleteIssue(issueId: string) {
   revalidate();
 }
 
+/** Thêm nhanh 1 vấn đề chỉ với tiêu đề (từ "Việc cần làm") — loại mặc định OTHER, sửa chi tiết sau ở trang Issue Log */
+export async function addIssueQuick(projectId: string, title: string) {
+  await requireUser();
+  const text = title.trim();
+  if (!text) return;
+  await prisma.issueLog.create({ data: { projectId, category: "OTHER", title: text } });
+  revalidate();
+}
+
+export async function updateIssueTitle(issueId: string, title: string) {
+  await requireUser();
+  const text = title.trim();
+  if (!text) return;
+  await prisma.issueLog.update({ where: { id: issueId }, data: { title: text } });
+  revalidate();
+}
+
 export async function updateIssueStatus(issueId: string, status: IssueStatus) {
   const user = await requireUser();
   const issue = await prisma.issueLog.update({
