@@ -16,5 +16,9 @@ HomeBuild_PM_database_vat_tu_hoan_thien_gia_web_*.xlsx
 HomeBuild_PM_database_thiet_bi_dien_tu_master_*.xlsx
 BẢNG TIẾN ĐỘ THI CÔNG CĐT HUỲNH MINH SANG.pdf
 
+# Kho công văn/bảng giá VLXD gốc (PDF/Excel scan, 200MB+) — nguồn để nhập liệu vào DB,
+# không phải code, đã seed vào database rồi nên không cần lưu trong Git
+BẢNG GIÁ/
+
 .vercel
 .env*

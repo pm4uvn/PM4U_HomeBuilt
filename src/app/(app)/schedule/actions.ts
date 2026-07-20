@@ -755,6 +755,13 @@ export async function deleteDailyLogItem(id: string) {
   revalidate();
 }
 
+/** Cập nhật tọa độ dự án dùng để gọi API dự báo thời tiết (lấy từ Google Maps: bấm giữ vị trí -> hiện tọa độ) */
+export async function updateProjectWeatherCoords(projectId: string, lat: number, lng: number) {
+  await requireUser();
+  await prisma.project.update({ where: { id: projectId }, data: { weatherLat: lat, weatherLng: lng } });
+  revalidate();
+}
+
 /**
  * Thêm nhanh 1 việc vào nhật ký HÔM NAY (từ "Việc cần làm") — tự tạo bản ghi nhật ký ngày hôm nay
  * nếu chưa có (weather/workerCount mặc định, sửa lại sau ở trang Nhật ký nếu cần).

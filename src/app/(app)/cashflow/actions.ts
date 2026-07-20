@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import type { OwnerSupplyCategory, PurchaseStatus } from "@prisma/client";
+import type { OwnerSupplyCategory, PurchaseStatus, OtherExpenseCategory, OtherExpenseStatus } from "@prisma/client";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const numOrNull = (fd: FormData, k: string) => {
@@ -38,6 +38,38 @@ export async function updatePurchase(itemId: string, fd: FormData) {
       status,
       actualCost: numOrNull(fd, "actualCost"),
       deliveredAt: ["DELIVERED", "INSTALLED"].includes(status) ? new Date() : null,
+    },
+  });
+  revalidatePath("/cashflow");
+  revalidatePath("/");
+}
+
+export async function createOtherExpense(projectId: string, fd: FormData) {
+  await requireUser();
+  const category = str(fd, "category") as OtherExpenseCategory;
+  await prisma.otherExpense.create({
+    data: {
+      projectId,
+      category,
+      categoryLabel: category === "OTHER" ? (str(fd, "categoryLabel") || null) : null,
+      title: str(fd, "title"),
+      plannedCost: numOrNull(fd, "plannedCost") ?? 0,
+      expenseDate: str(fd, "expenseDate") ? new Date(str(fd, "expenseDate")) : null,
+      note: str(fd, "note") || null,
+    },
+  });
+  revalidatePath("/cashflow");
+  revalidatePath("/");
+}
+
+export async function updateOtherExpense(itemId: string, fd: FormData) {
+  await requireUser();
+  const status = str(fd, "status") as OtherExpenseStatus;
+  await prisma.otherExpense.update({
+    where: { id: itemId },
+    data: {
+      status,
+      actualCost: numOrNull(fd, "actualCost"),
     },
   });
   revalidatePath("/cashflow");

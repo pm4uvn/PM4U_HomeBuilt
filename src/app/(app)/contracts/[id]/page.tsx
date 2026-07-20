@@ -50,7 +50,14 @@ export default async function ContractDetailPage({
       paymentStages: {
         orderBy: { stageNo: "asc" },
         include: {
-          triggerMilestone: true,
+          triggerMilestone: {
+            include: {
+              checklistItems: true,
+              tasks: { select: { name: true, isDone: true, _count: { select: { documents: true } } } },
+              dailyLogItems: { select: { _count: { select: { photos: true } } } },
+              _count: { select: { documents: true } },
+            },
+          },
           transactions: { orderBy: { paidDate: "desc" }, include: { paidFromAccount: true } },
         },
       },
@@ -68,7 +75,14 @@ export default async function ContractDetailPage({
     where: { contractId: id },
     orderBy: { stageNo: "asc" },
     include: {
-      triggerMilestone: true,
+      triggerMilestone: {
+        include: {
+          checklistItems: true,
+          tasks: { select: { name: true, isDone: true, _count: { select: { documents: true } } } },
+          dailyLogItems: { select: { _count: { select: { photos: true } } } },
+          _count: { select: { documents: true } },
+        },
+      },
       transactions: { orderBy: { paidDate: "desc" }, include: { paidFromAccount: true } },
     },
   });
@@ -92,6 +106,20 @@ export default async function ContractDetailPage({
 
   const value = Number(contract.contractValue);
   const totalPenalties = contract.penaltyEvents.reduce((s, e) => s + Number(e.computedAmount), 0);
+  // Tổng giá trị hợp đồng = tổng các đợt thanh toán (nhất quán với bảng "Đợt thanh toán" bên dưới),
+  // không dùng công thức phẳng value*(1+VAT) vì tổng % các đợt có thể != 100% và có giữ lại bảo hành ở đợt cuối
+  const totalFromStages = contract.paymentStages.reduce(
+    (s, p) =>
+      s +
+      computeStageGrossAmount({
+        contractValue: value,
+        vatRate: Number(contract.vatRate),
+        retentionPct: Number(contract.retentionPct),
+        percent: Number(p.percent),
+        isFinal: p.isFinal,
+      }),
+    0,
+  );
 
   return (
     <div className="space-y-3">
@@ -135,7 +163,12 @@ export default async function ContractDetailPage({
             <div className="flex justify-between"><dt className="text-muted">Nội dung</dt><dd>{contract.title}</dd></div>
             <div className="flex justify-between"><dt className="text-muted">Giá trị (trước VAT)</dt><dd className="font-bold money">{fmtVND(value)}</dd></div>
             <div className="flex justify-between"><dt className="text-muted">VAT / Giữ bảo hành</dt><dd className="money">{Number(contract.vatRate)}% / {Number(contract.retentionPct)}%</dd></div>
-            <div className="flex justify-between"><dt className="text-muted">Tổng giá trị (đã gồm VAT)</dt><dd className="font-bold money" style={{ color: "var(--good-text)" }}>{fmtVND(value * (1 + Number(contract.vatRate) / 100))}</dd></div>
+            <div className="flex justify-between">
+              <dt className="text-muted">Tổng giá trị (đã gồm VAT{contract.paymentStages.length > 0 ? " — tổng đợt TT" : ""})</dt>
+              <dd className="font-bold money" style={{ color: "var(--good-text)" }}>
+                {fmtVND(Math.round(contract.paymentStages.length > 0 ? totalFromStages : value * (1 + Number(contract.vatRate) / 100)))}
+              </dd>
+            </div>
             <div className="flex justify-between"><dt className="text-muted">Ký / Khởi công / Hoàn thành</dt><dd className="money">{fmtDate(contract.signedDate)} · {fmtDate(contract.startDate)} · {fmtDate(contract.plannedEndDate)}</dd></div>
             {contract.vendor.bankName && contract.vendor.bankAccountNumber && (
               <div className="flex justify-between">
@@ -260,6 +293,17 @@ export default async function ContractDetailPage({
                 const paidSoFar = s.paidAmount != null ? Number(s.paidAmount) : 0;
                 const remaining = Math.max(0, gross - paidSoFar);
                 const canPay = s.status === "DUE" || s.status === "OVERDUE" || s.status === "PARTIAL";
+                // Smart Payment Gate: cảnh báo trước khi trả tiền nếu checklist/WBS con/ảnh bằng chứng của milestone kích hoạt chưa đầy đủ
+                const milestone = s.triggerMilestone;
+                const uncheckedChecklist = milestone?.checklistItems.filter((c) => !c.isChecked).map((c) => c.label) ?? [];
+                const undoneTasks = milestone?.tasks.filter((t) => !t.isDone).map((t) => t.name) ?? [];
+                // Ảnh bằng chứng có thể gắn trực tiếp vào milestone, vào từng WBS con, hoặc vào việc nhật ký gắn với mốc này
+                const hasEvidence = milestone
+                  ? milestone._count.documents > 0 ||
+                    milestone.tasks.some((t) => t._count.documents > 0) ||
+                    milestone.dailyLogItems.some((d) => d._count.photos > 0)
+                  : true;
+                const hasGateIssue = !!milestone && (uncheckedChecklist.length > 0 || undoneTasks.length > 0 || !hasEvidence);
                 return (
                   <Fragment key={s.id}>
                     <tr className="border-b border-grid last:border-0 text-[13px]">
@@ -298,18 +342,30 @@ export default async function ContractDetailPage({
                       </td>
                       <td className="py-2 text-right whitespace-nowrap align-top">
                         {canPay && (
-                          <AddPaymentForm
-                            stageId={s.id}
-                            remainingAmount={remaining}
-                            vendorBank={{
-                              bankName: contract.vendor.bankName,
-                              bankAccountNumber: contract.vendor.bankAccountNumber,
-                              bankAccountHolder: contract.vendor.bankAccountHolder,
-                            }}
-                            bankAccounts={bankAccounts.map((a) => ({
-                              id: a.id, nickname: a.nickname, bankName: a.bankName, accountNumber: a.accountNumber,
-                            }))}
-                          />
+                          <>
+                            {hasGateIssue && (
+                              <span
+                                className="mr-1"
+                                title="Còn thiếu điều kiện nghiệm thu — xem cảnh báo khi bấm Trả tiền"
+                                style={{ color: "var(--warning)" }}
+                              >
+                                ⚠️
+                              </span>
+                            )}
+                            <AddPaymentForm
+                              stageId={s.id}
+                              remainingAmount={remaining}
+                              vendorBank={{
+                                bankName: contract.vendor.bankName,
+                                bankAccountNumber: contract.vendor.bankAccountNumber,
+                                bankAccountHolder: contract.vendor.bankAccountHolder,
+                              }}
+                              bankAccounts={bankAccounts.map((a) => ({
+                                id: a.id, nickname: a.nickname, bankName: a.bankName, accountNumber: a.accountNumber,
+                              }))}
+                              gate={milestone ? { milestoneName: milestone.name, uncheckedChecklist, undoneTasks, hasEvidence } : null}
+                            />
+                          </>
                         )}
                         <span className="ml-1.5">
                           <EditStageForm

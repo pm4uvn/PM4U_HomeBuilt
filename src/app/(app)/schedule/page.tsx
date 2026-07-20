@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject, type GanttPhase } from "@/services/dashboard.service";
 import { resolveExpiredHoldPoints } from "@/services/milestone.service";
+import { getPicOptions } from "@/services/pic.service";
 import { getSignedUrl } from "@/lib/storage";
 import { Card, EmptyState } from "@/components/ui";
 import { GanttChart } from "@/components/dashboard";
@@ -28,7 +29,7 @@ export default async function SchedulePage() {
   // Compute-on-read: quá 48h chưa xác nhận -> tự động thông qua
   await resolveExpiredHoldPoints(project.id);
 
-  const [phases, checklistTemplates, stakeholders, contracts, dependencies] = await Promise.all([
+  const [phases, checklistTemplates, dependencies] = await Promise.all([
     prisma.phase.findMany({
       where: { projectId: project.id },
       orderBy: { sortOrder: "asc" },
@@ -48,8 +49,6 @@ export default async function SchedulePage() {
       include: { items: { orderBy: { sortOrder: "asc" } } },
       orderBy: { category: "asc" },
     }),
-    prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
-    prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } } }),
     prisma.taskDependency.findMany({ where: { projectId: project.id } }),
   ]);
 
@@ -121,16 +120,10 @@ export default async function SchedulePage() {
     items: t.items.map((i) => i.label),
   }));
 
-  // Gợi ý PIC cho Gantt chi tiết: vai trò phổ biến + stakeholder + nhà thầu + tên đã gõ trong WBS — vẫn cho gõ tên mới (giống combobox PIC ở Nhật ký)
-  const COMMON_PIC_ROLES = ["Chủ đầu tư", "Giám sát công trình", "Kỹ sư kết cấu", "Kỹ sư M&E", "Đơn vị thiết kế"];
-  const ganttPicOptions = Array.from(
-    new Set([
-      ...COMMON_PIC_ROLES,
-      ...stakeholders.map((s) => s.name),
-      ...contracts.map((c) => c.vendor.name),
-      ...phases.flatMap((p) => p.milestones.flatMap((m) => m.tasks.map((t) => t.responsible))).filter((p): p is string => !!p),
-    ]),
-  ).sort((a, b) => a.localeCompare(b));
+  const ganttPicOptions = await getPicOptions(
+    project.id,
+    phases.flatMap((p) => p.milestones.flatMap((m) => m.tasks.map((t) => t.responsible))),
+  );
 
   const now = Date.now();
 

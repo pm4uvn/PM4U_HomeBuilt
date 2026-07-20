@@ -13,7 +13,7 @@ export interface ForecastItem {
   isEstimated: boolean;
   label: string;
   amount: number;
-  type: "contractor" | "owner" | "materials";
+  type: "contractor" | "owner" | "materials" | "other";
   /** Nhóm vật tư (chỉ có khi type === "materials") — dùng để gộp hiển thị theo danh mục */
   category?: string;
 }
@@ -32,7 +32,7 @@ export interface CashflowForecast {
 }
 
 export async function getMonthlyForecast(projectId: string): Promise<CashflowForecast> {
-  const [stages, purchases, vatTuChuaXongList] = await Promise.all([
+  const [stages, purchases, vatTuChuaXongList, otherExpenses] = await Promise.all([
     prisma.paymentStage.findMany({
       where: { contract: { projectId }, status: { not: "PAID" } },
       include: { contract: true, triggerMilestone: true },
@@ -44,6 +44,9 @@ export async function getMonthlyForecast(projectId: string): Promise<CashflowFor
     prisma.vatTuDuAn.findMany({
       where: { trangThaiThiCong: { notIn: ["da_thi_cong", "dang_nghiem_thu", "da_nghiem_thu"] } },
       include: { vatTu: { include: { nhom: true } } },
+    }),
+    prisma.otherExpense.findMany({
+      where: { projectId, status: { not: "PAID" } },
     }),
   ]);
 
@@ -104,6 +107,17 @@ export async function getMonthlyForecast(projectId: string): Promise<CashflowFor
       amount,
       type: "materials",
       category: v.vatTu.nhom.tenNhomVatTu,
+    });
+  }
+
+  for (const e of otherExpenses) {
+    if (!e.expenseDate) continue;
+    items.push({
+      date: e.expenseDate.toISOString(),
+      isEstimated: false,
+      label: e.title,
+      amount: Number(e.actualCost ?? e.plannedCost),
+      type: "other",
     });
   }
 

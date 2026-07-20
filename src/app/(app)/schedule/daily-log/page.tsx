@@ -1,6 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
+import { getWeatherForecast } from "@/services/weather.service";
+import { getPicOptions } from "@/services/pic.service";
 import { Card, Tag, EmptyState } from "@/components/ui";
 import { getSignedUrl } from "@/lib/storage";
 import { fmtDate } from "@/lib/format";
@@ -11,6 +13,7 @@ import {
 } from "../forms";
 import { uploadDailyLogVoiceNote, deleteDailyLogPhoto } from "../actions";
 import { ScheduleTabs } from "../ScheduleTabs";
+import { WeatherForecast } from "../WeatherForecast";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +26,10 @@ export default async function DailyLogPage() {
   }
 
   const duAn = await prisma.duAn.findFirst({ orderBy: { id: "asc" } });
+  const projectLat = project.weatherLat != null ? Number(project.weatherLat) : null;
+  const projectLng = project.weatherLng != null ? Number(project.weatherLng) : null;
 
-  const [phases, dailyLogs, vatTuDuAnList, documents, contracts, stakeholders, existingPics] = await Promise.all([
+  const [phases, dailyLogs, vatTuDuAnList, documents, contracts, existingPics, forecast] = await Promise.all([
     prisma.phase.findMany({
       where: { projectId: project.id },
       orderBy: { sortOrder: "asc" },
@@ -67,12 +72,12 @@ export default async function DailyLogPage() {
       include: { vendor: { select: { name: true } } },
       orderBy: { code: "asc" },
     }),
-    prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
     prisma.dailyLogItem.findMany({
       where: { dailyLog: { projectId: project.id }, pic: { not: null } },
       select: { pic: true },
       distinct: ["pic"],
     }),
+    getWeatherForecast(projectLat, projectLng),
   ]);
 
   const phasesForDailyLog = phases.map((p) => ({
@@ -89,16 +94,7 @@ export default async function DailyLogPage() {
     id: c.id,
     label: `${c.code} — ${c.title} (${c.vendor.name})`,
   }));
-  // Gợi ý PIC: vai trò phổ biến luôn có sẵn + stakeholder + nhà thầu trong hợp đồng + tên đã gõ trước đó — vẫn cho gõ tên mới
-  const COMMON_PIC_ROLES = ["Chủ đầu tư", "Giám sát công trình", "Kỹ sư kết cấu", "Kỹ sư M&E", "Đơn vị thiết kế"];
-  const picOptions = Array.from(
-    new Set([
-      ...COMMON_PIC_ROLES,
-      ...stakeholders.map((s) => s.name),
-      ...contracts.map((c) => c.vendor.name),
-      ...existingPics.map((p) => p.pic).filter((p): p is string => !!p),
-    ]),
-  ).sort((a, b) => a.localeCompare(b));
+  const picOptions = await getPicOptions(project.id, existingPics.map((p) => p.pic));
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayLog = dailyLogs.find((d) => d.logDate.toISOString().slice(0, 10) === todayStr);
 
@@ -169,6 +165,8 @@ export default async function DailyLogPage() {
           />
         </div>
       </header>
+
+      <WeatherForecast projectId={project.id} forecast={forecast} lat={projectLat} lng={projectLng} />
 
       <Card title={`Nhật ký công trình (14 ngày gần nhất)`}>
         {dailyLogs.length === 0 ? (
@@ -241,16 +239,20 @@ export default async function DailyLogPage() {
                     {d.items.length > 0 && d.workDescription && (
                       <div className="text-xs text-muted mt-1 italic">{d.workDescription}</div>
                     )}
-                    <div className="flex flex-wrap gap-3 items-start">
-                      <DailyLogPhotos dailyLogId={d.id} projectId={project.id} photos={photosByLog.get(d.id) ?? []} />
-                      <VoiceNotes
-                        notes={voiceNotesByLog.get(d.id) ?? []}
-                        entityId={d.id}
-                        projectId={project.id}
-                        uploadAction={uploadDailyLogVoiceNote}
-                        onDelete={deleteDailyLogPhoto}
-                      />
-                    </div>
+                    {/* Ảnh/ghi âm theo cả ngày — chỉ cần khi ngày CHƯA có việc con nào (mỗi việc con giờ đã tự gắn ảnh/ghi âm riêng ở trên),
+                        hoặc ngày đó đã có sẵn ảnh/ghi âm gắn theo cả ngày từ trước (giữ hiện để không mất, không ẩn dữ liệu cũ) */}
+                    {(d.items.length === 0 || (photosByLog.get(d.id)?.length ?? 0) > 0 || (voiceNotesByLog.get(d.id)?.length ?? 0) > 0) && (
+                      <div className="flex flex-wrap gap-3 items-start">
+                        <DailyLogPhotos dailyLogId={d.id} projectId={project.id} photos={photosByLog.get(d.id) ?? []} />
+                        <VoiceNotes
+                          notes={voiceNotesByLog.get(d.id) ?? []}
+                          entityId={d.id}
+                          projectId={project.id}
+                          uploadAction={uploadDailyLogVoiceNote}
+                          onDelete={deleteDailyLogPhoto}
+                        />
+                      </div>
+                    )}
                   </td>
                   <td className="py-2">
                     <div className="flex gap-2 justify-end whitespace-nowrap">

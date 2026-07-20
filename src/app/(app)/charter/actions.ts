@@ -16,6 +16,11 @@ const intOrNull = (fd: FormData, k: string) => (str(fd, k) ? parseInt(str(fd, k)
 function revalidate() {
   revalidatePath("/charter");
   revalidatePath("/charter/stakeholders");
+  revalidatePath("/charter/pic");
+  // Danh sách PIC là nguồn tự điền cho các ô chọn PIC ở đây — sửa/thêm PIC phải làm mới lại luôn 3 trang này
+  revalidatePath("/schedule");
+  revalidatePath("/schedule/todo");
+  revalidatePath("/schedule/daily-log");
 }
 
 /**
@@ -207,6 +212,78 @@ export async function updateStakeholder(id: string, fd: FormData) {
 export async function deleteStakeholder(id: string) {
   await requireUser();
   await prisma.stakeholder.delete({ where: { id } });
+  revalidate();
+}
+
+/** Nạp nhanh nhà thầu/NCC đã khai báo ở module Hợp đồng vào danh sách PIC, khỏi gõ tay lại — cùng logic gộp với importVendorsAsStakeholders nhưng ghi vào bảng Pic riêng */
+export async function importVendorsAsPics(projectId: string) {
+  await requireUser();
+
+  const [vendors, existing] = await Promise.all([
+    prisma.vendor.findMany({ where: { projectId } }),
+    prisma.pic.findMany({ where: { projectId }, select: { name: true } }),
+  ]);
+  const already = new Set(existing.map((p) => p.name));
+
+  const byCompany = new Map<string, { contactName: string | null; phone: string | null; roles: Set<string> }>();
+  for (const v of vendors) {
+    const name = v.contactName || v.name;
+    if (already.has(name)) continue;
+    const entry = byCompany.get(name) ?? { contactName: v.contactName, phone: v.phone, roles: new Set<string>() };
+    entry.roles.add(VENDOR_TYPE[v.type] ?? "Nhà thầu");
+    if (!entry.phone) entry.phone = v.phone;
+    byCompany.set(name, entry);
+  }
+  const toImport = [...byCompany.entries()];
+
+  if (toImport.length > 0) {
+    const count = await prisma.pic.count({ where: { projectId } });
+    await prisma.pic.createMany({
+      data: toImport.map(([name, v], i) => ({
+        projectId,
+        name,
+        role: [...v.roles].join(" + "),
+        phone: v.phone,
+        sortOrder: count + i,
+      })),
+    });
+  }
+
+  revalidate();
+  return toImport.length;
+}
+
+export async function createPic(projectId: string, fd: FormData) {
+  await requireUser();
+  const count = await prisma.pic.count({ where: { projectId } });
+  await prisma.pic.create({
+    data: {
+      projectId,
+      name: str(fd, "name"),
+      role: str(fd, "role") || null,
+      phone: str(fd, "phone") || null,
+      sortOrder: count,
+    },
+  });
+  revalidate();
+}
+
+export async function updatePic(id: string, fd: FormData) {
+  await requireUser();
+  await prisma.pic.update({
+    where: { id },
+    data: {
+      name: str(fd, "name"),
+      role: str(fd, "role") || null,
+      phone: str(fd, "phone") || null,
+    },
+  });
+  revalidate();
+}
+
+export async function deletePic(id: string) {
+  await requireUser();
+  await prisma.pic.delete({ where: { id } });
   revalidate();
 }
 

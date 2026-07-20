@@ -47,7 +47,10 @@ export default async function DashboardPage() {
         <span className="bg-brand text-white text-xs font-semibold px-2.5 py-1 rounded-full">
           {PROJECT_STATUS_LABEL[data.project.status] ?? data.project.status}
         </span>
-        <Link href="/report" className="ml-auto">
+        <Link href="/house-passport" className="ml-auto">
+          <Button variant="default">🏠 Hồ sơ nhà</Button>
+        </Link>
+        <Link href="/report">
           <Button variant="default">🖨️ Xuất báo cáo</Button>
         </Link>
       </header>

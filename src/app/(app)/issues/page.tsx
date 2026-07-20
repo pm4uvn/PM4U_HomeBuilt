@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
+import { getPicOptions } from "@/services/pic.service";
 import { Card, Tag, EmptyState } from "@/components/ui";
 import { fmtVND, fmtDate } from "@/lib/format";
 import { ISSUE_CATEGORY, ISSUE_SEVERITY, ISSUE_STATUS } from "@/lib/labels";
@@ -40,6 +41,8 @@ export default async function IssuesPage() {
     }),
   ]);
 
+  const picOptions = await getPicOptions(project.id, issues.map((i) => i.owner));
+
   // Mẫu rủi ro chưa được thêm vào sổ — vẫn cho chọn để liên kết, chọn xong tự tạo RiskLog thật (xem createIssue/updateIssue)
   const existingRiskTitles = new Set(risks.map((r) => r.title));
   const riskTemplates = ALL_RISK_TEMPLATES.filter((t) => !existingRiskTitles.has(t.title)).map((t) => ({
@@ -58,7 +61,7 @@ export default async function IssuesPage() {
       <header className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">🐞 Issue Log — Vấn đề phát sinh</h1>
         <div className="ml-auto flex gap-2 flex-wrap">
-          <CreateIssueForm projectId={project.id} risks={risks} riskTemplates={riskTemplates} />
+          <CreateIssueForm projectId={project.id} risks={risks} riskTemplates={riskTemplates} picOptions={picOptions} />
         </div>
       </header>
 
@@ -144,6 +147,7 @@ export default async function IssuesPage() {
                         }}
                         risks={risks}
                         riskTemplates={riskTemplates}
+                        picOptions={picOptions}
                       />
                       <DeleteIssueButton issueId={i.id} title={i.title} />
                     </div>

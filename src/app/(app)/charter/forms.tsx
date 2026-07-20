@@ -7,7 +7,7 @@ import { fmtVND } from "@/lib/format";
 import { STAKEHOLDER_LEVEL } from "@/lib/labels";
 import {
   upsertCharter, createStakeholder, updateStakeholder, deleteStakeholder, importVendorsAsStakeholders,
-  toggleEmailNotifications,
+  toggleEmailNotifications, createPic, updatePic, deletePic, importVendorsAsPics,
 } from "./actions";
 
 const opts = (m: Record<string, string>) =>
@@ -472,6 +472,74 @@ export function DeleteStakeholderButton({ id, name }: { id: string; name: string
       type="button"
       onClick={() => {
         if (confirm(`Xóa "${name}" khỏi sổ bên liên quan?`)) deleteStakeholder(id);
+      }}
+      className="text-critical text-xs font-semibold"
+    >
+      Xóa
+    </button>
+  );
+}
+
+export type PicRow = { id: string; name: string; role: string | null; phone: string | null };
+
+function PicFields({ p }: { p?: PicRow }) {
+  return (
+    <>
+      <Field label="Tên *"><Input name="name" required defaultValue={p?.name ?? ""} /></Field>
+      <Field label="Vai trò"><Input name="role" defaultValue={p?.role ?? ""} placeholder="Thầu thô, Giám sát công trình..." /></Field>
+      <Field label="Điện thoại"><Input name="phone" defaultValue={p?.phone ?? ""} /></Field>
+    </>
+  );
+}
+
+/** Nạp nhanh nhà thầu/NCC vào danh sách PIC, khỏi gõ tay lại */
+export function ImportVendorsAsPicsButton({ projectId }: { projectId: string }) {
+  return (
+    <Button
+      variant="default"
+      type="button"
+      onClick={async () => {
+        const count = await importVendorsAsPics(projectId);
+        alert(count > 0 ? `Đã nạp ${count} nhà thầu mới vào danh sách PIC.` : "Không có nhà thầu mới nào để nạp — tất cả đã có trong danh sách.");
+      }}
+    >
+      Nạp từ danh sách nhà thầu
+    </Button>
+  );
+}
+
+export function AddPicForm({ projectId }: { projectId: string }) {
+  return (
+    <ModalButton label="+ Thêm PIC" title="Thêm PIC">
+      {(close) => (
+        <form action={async (fd) => { await createPic(projectId, fd); close(); }} className="space-y-3">
+          <PicFields />
+          <div className="pt-2"><Button type="submit" variant="primary" className="w-full">Lưu</Button></div>
+        </form>
+      )}
+    </ModalButton>
+  );
+}
+
+export function EditPicForm({ p }: { p: PicRow }) {
+  return (
+    <ModalButton label="Sửa" variant="default" title={p.name}>
+      {(close) => (
+        <form action={async (fd) => { await updatePic(p.id, fd); close(); }} className="space-y-3">
+          <PicFields p={p} />
+          <div className="pt-2"><Button type="submit" variant="primary" className="w-full">Lưu thay đổi</Button></div>
+        </form>
+      )}
+    </ModalButton>
+  );
+}
+
+export function DeletePicButton({ id, name }: { id: string; name: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (confirm(`Xóa "${name}" khỏi danh sách PIC?`)) deletePic(id);
       }}
       className="text-critical text-xs font-semibold"
     >

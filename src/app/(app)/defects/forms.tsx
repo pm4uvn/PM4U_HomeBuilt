@@ -26,12 +26,15 @@ function contractOptions(contracts: ContractOption[]) {
 }
 
 export function CreateDefectForm({
-  projectId, contracts, defaultWarrantyStart,
-}: { projectId: string; contracts: ContractOption[]; defaultWarrantyStart: string | null }) {
+  projectId, contracts, defaultWarrantyStart, picOptions = [],
+}: { projectId: string; contracts: ContractOption[]; defaultWarrantyStart: string | null; picOptions?: string[] }) {
   return (
     <ModalButton label="+ Khiếm khuyết" title="Ghi nhận khiếm khuyết">
       {(close) => (
         <form action={async (fd) => { await createDefect(projectId, fd); close(); }} className="space-y-3">
+          <datalist id="defect-pic-options">
+            {picOptions.map((p) => <option key={p} value={p} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm khiếm khuyết *"><Select name="category" required>{opts(DEFECT_CATEGORY)}</Select></Field>
             <Field label="Vị trí"><Input name="location" placeholder="WC tầng 2, mái sân thượng..." /></Field>
@@ -45,7 +48,7 @@ export function CreateDefectForm({
           </div>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Người báo cáo"><Input name="reportedBy" placeholder="Ai phát hiện" /></Field>
-            <Field label="Người phụ trách xử lý"><Input name="owner" placeholder="CĐT / Giám sát" /></Field>
+            <Field label="Người phụ trách xử lý"><Input name="owner" list="defect-pic-options" placeholder="CĐT / Giám sát" /></Field>
           </div>
           <Field label="Nhà thầu chịu trách nhiệm bảo hành (tùy chọn)">
             <Select name="contractId" defaultValue="">{contractOptions(contracts)}</Select>
@@ -83,12 +86,15 @@ export type DefectEditRow = {
 };
 
 export function EditDefectForm({
-  defect, contracts,
-}: { defect: DefectEditRow; contracts: ContractOption[] }) {
+  defect, contracts, picOptions = [],
+}: { defect: DefectEditRow; contracts: ContractOption[]; picOptions?: string[] }) {
   return (
     <ModalButton label="Sửa" title={`Sửa khiếm khuyết — ${defect.title}`} variant="default">
       {(close) => (
         <form action={async (fd) => { await updateDefect(defect.id, fd); close(); }} className="space-y-3">
+          <datalist id="defect-pic-options">
+            {picOptions.map((p) => <option key={p} value={p} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm khiếm khuyết *">
               <Select name="category" required defaultValue={defect.category}>{opts(DEFECT_CATEGORY)}</Select>
@@ -110,7 +116,7 @@ export function EditDefectForm({
           </div>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Người báo cáo"><Input name="reportedBy" defaultValue={defect.reportedBy ?? ""} /></Field>
-            <Field label="Người phụ trách xử lý"><Input name="owner" defaultValue={defect.owner ?? ""} /></Field>
+            <Field label="Người phụ trách xử lý"><Input name="owner" list="defect-pic-options" defaultValue={defect.owner ?? ""} /></Field>
           </div>
           <Field label="Nhà thầu chịu trách nhiệm bảo hành (tùy chọn)">
             <Select name="contractId" defaultValue={defect.contractId ?? ""}>{contractOptions(contracts)}</Select>

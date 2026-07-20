@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
+import { getPicOptions } from "@/services/pic.service";
 import { Card, Tag, EmptyState } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 import { DEFECT_CATEGORY, DEFECT_SEVERITY, DEFECT_STATUS } from "@/lib/labels";
@@ -35,6 +36,7 @@ export default async function DefectsPage() {
     prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } }, orderBy: { code: "asc" } }),
   ]);
   const contracts = contractRows.map((c) => ({ id: c.id, label: `${c.code} — ${c.vendor.name}` }));
+  const picOptions = await getPicOptions(project.id, defects.map((d) => d.owner));
 
   const now = Date.now();
   const WARRANTY_WARN_DAYS = 30;
@@ -53,7 +55,7 @@ export default async function DefectsPage() {
       <header className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">🔧 Sổ khiếm khuyết & Bảo hành</h1>
         <div className="ml-auto flex gap-2 flex-wrap">
-          <CreateDefectForm projectId={project.id} contracts={contracts} defaultWarrantyStart={null} />
+          <CreateDefectForm projectId={project.id} contracts={contracts} defaultWarrantyStart={null} picOptions={picOptions} />
         </div>
       </header>
 
@@ -152,6 +154,7 @@ export default async function DefectsPage() {
                           resolution: d.resolution,
                         }}
                         contracts={contracts}
+                        picOptions={picOptions}
                       />
                       <DeleteDefectButton defectId={d.id} title={d.title} />
                     </div>

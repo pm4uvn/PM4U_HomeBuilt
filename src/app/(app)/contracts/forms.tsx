@@ -755,17 +755,38 @@ export function AddPaymentForm({
   remainingAmount,
   vendorBank,
   bankAccounts,
+  gate,
 }: {
   stageId: string;
   remainingAmount: number;
   vendorBank?: { bankName: string | null; bankAccountNumber: string | null; bankAccountHolder: string | null };
   bankAccounts: { id: string; nickname: string; bankName: string; accountNumber: string }[];
+  gate?: { milestoneName: string; uncheckedChecklist: string[]; undoneTasks: string[]; hasEvidence: boolean } | null;
 }) {
   const hasVendorBank = vendorBank?.bankName && vendorBank?.bankAccountNumber;
+  const hasGateIssue = !!gate && (gate.uncheckedChecklist.length > 0 || gate.undoneTasks.length > 0 || !gate.hasEvidence);
   return (
     <ModalButton label="+ Trả tiền" title="Ghi nhận thanh toán" variant="default">
       {(close) => (
         <form action={async (fd) => { await addPaymentTransaction(stageId, fd); close(); }} className="space-y-3">
+          {hasGateIssue && (
+            <div className="text-[13px] rounded-lg p-3 border" style={{ borderColor: "var(--warning)", background: "rgba(250,178,25,0.08)" }}>
+              <p className="font-semibold mb-1">⚠️ Mốc &quot;{gate!.milestoneName}&quot; chưa hoàn tất đầy đủ:</p>
+              <ul className="list-disc list-inside text-ink-2 space-y-0.5">
+                {gate!.uncheckedChecklist.length > 0 && (
+                  <li>Checklist chưa tick: {gate!.uncheckedChecklist.join(", ")}</li>
+                )}
+                {gate!.undoneTasks.length > 0 && (
+                  <li>WBS con chưa xong: {gate!.undoneTasks.join(", ")}</li>
+                )}
+                {!gate!.hasEvidence && <li>Chưa có ảnh bằng chứng nghiệm thu</li>}
+              </ul>
+              <label className="flex items-center gap-1.5 mt-2 font-medium">
+                <input type="checkbox" required />
+                Tôi xác nhận đã biết rủi ro và vẫn muốn ghi nhận thanh toán
+              </label>
+            </div>
+          )}
           {hasVendorBank && (
             <div className="text-[13px] bg-page border border-line rounded-lg p-3">
               <p className="text-xs font-semibold text-muted uppercase mb-1">Chuyển tới TK nhà thầu</p>

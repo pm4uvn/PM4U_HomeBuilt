@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
 import { getTodoItems } from "@/services/todo.service";
+import { getPicOptions } from "@/services/pic.service";
 import { Card, EmptyState } from "@/components/ui";
 import { ScheduleTabs } from "../ScheduleTabs";
 import { TodoList } from "./TodoList";
@@ -16,10 +17,8 @@ export default async function TodoPage() {
     return <Card><EmptyState title="Chưa có dự án" sub="Tạo dự án ở trang Hợp đồng trước" /></Card>;
   }
 
-  const [items, stakeholders, contracts, milestones, risks] = await Promise.all([
+  const [items, milestones, risks] = await Promise.all([
     getTodoItems(project.id, myEmail),
-    prisma.stakeholder.findMany({ where: { projectId: project.id }, select: { name: true } }),
-    prisma.contract.findMany({ where: { projectId: project.id }, include: { vendor: { select: { name: true } } } }),
     prisma.milestone.findMany({
       where: { phase: { projectId: project.id } },
       select: { id: true, name: true, phase: { select: { name: true, sortOrder: true } } },
@@ -29,17 +28,7 @@ export default async function TodoPage() {
   ]);
   const milestoneOptions = milestones.map((m) => ({ id: m.id, name: m.name, phaseName: m.phase.name }));
   const riskOptions = risks.map((r) => ({ id: r.id, title: r.title }));
-
-  // Gợi ý PIC cho ô sửa nhanh — cùng danh sách dùng ở Nhật ký/Gantt chi tiết, vẫn cho gõ tên mới
-  const COMMON_PIC_ROLES = ["Chủ đầu tư", "Giám sát công trình", "Kỹ sư kết cấu", "Kỹ sư M&E", "Đơn vị thiết kế"];
-  const picOptions = Array.from(
-    new Set([
-      ...COMMON_PIC_ROLES,
-      ...stakeholders.map((s) => s.name),
-      ...contracts.map((c) => c.vendor.name),
-      ...items.map((it) => it.pic).filter((p): p is string => !!p),
-    ]),
-  ).sort((a, b) => a.localeCompare(b));
+  const picOptions = await getPicOptions(project.id, items.map((it) => it.pic));
 
   const pendingCount = items.filter((it) => !it.isDone).length;
 

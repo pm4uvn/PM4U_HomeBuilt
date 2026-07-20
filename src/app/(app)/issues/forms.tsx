@@ -46,15 +46,18 @@ function riskOptions(risks: RiskOption[], templates: RiskTemplateOption[]) {
 }
 
 export function CreateIssueForm({
-  projectId, risks, riskTemplates,
-}: { projectId: string; risks: RiskOption[]; riskTemplates: RiskTemplateOption[] }) {
+  projectId, risks, riskTemplates, picOptions = [],
+}: { projectId: string; risks: RiskOption[]; riskTemplates: RiskTemplateOption[]; picOptions?: string[] }) {
   return (
     <ModalButton label="+ Vấn đề" title="Ghi nhận vấn đề (Issue)">
       {(close) => (
         <form action={async (fd) => { await createIssue(projectId, fd); close(); }} className="space-y-3">
+          <datalist id="issue-pic-options">
+            {picOptions.map((p) => <option key={p} value={p} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm vấn đề *"><Select name="category" required>{opts(ISSUE_CATEGORY)}</Select></Field>
-            <Field label="Người phụ trách xử lý"><Input name="owner" placeholder="CĐT / Giám sát / Nhà thầu X" /></Field>
+            <Field label="Người phụ trách xử lý"><Input name="owner" list="issue-pic-options" placeholder="CĐT / Giám sát / Nhà thầu X" /></Field>
           </div>
           <Field label="Tiêu đề *"><Input name="title" required placeholder="Nhà thầu giao sai loại gạch ốp lát" /></Field>
           <Field label="Mô tả"><Textarea name="description" rows={2} /></Field>
@@ -95,18 +98,21 @@ export type IssueEditRow = {
 };
 
 export function EditIssueForm({
-  issue, risks, riskTemplates,
-}: { issue: IssueEditRow; risks: RiskOption[]; riskTemplates: RiskTemplateOption[] }) {
+  issue, risks, riskTemplates, picOptions = [],
+}: { issue: IssueEditRow; risks: RiskOption[]; riskTemplates: RiskTemplateOption[]; picOptions?: string[] }) {
   return (
     <ModalButton label="Sửa" title={`Sửa vấn đề — ${issue.title}`} variant="default">
       {(close) => (
         <form action={async (fd) => { await updateIssue(issue.id, fd); close(); }} className="space-y-3">
+          <datalist id="issue-pic-options">
+            {picOptions.map((p) => <option key={p} value={p} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm vấn đề *">
               <Select name="category" required defaultValue={issue.category}>{opts(ISSUE_CATEGORY)}</Select>
             </Field>
             <Field label="Người phụ trách xử lý">
-              <Input name="owner" defaultValue={issue.owner ?? ""} placeholder="CĐT / Giám sát / Nhà thầu X" />
+              <Input name="owner" list="issue-pic-options" defaultValue={issue.owner ?? ""} placeholder="CĐT / Giám sát / Nhà thầu X" />
             </Field>
           </div>
           <Field label="Tiêu đề *"><Input name="title" required defaultValue={issue.title} /></Field>

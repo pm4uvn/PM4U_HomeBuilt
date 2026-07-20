@@ -1,8 +1,9 @@
 /**
- * Tổng hợp ngân sách: tách 3 dòng tiền
+ * Tổng hợp ngân sách: tách 4 dòng tiền
  *  (1) Trả nhà thầu theo đợt hợp đồng (PaymentStage đã PAID/PARTIAL)
  *  (2) Hạng mục CĐT tự mua (OwnerPurchaseItem)
  *  (3) Vật tư hoàn thiện gắn vào dự án (VatTuDuAn — bảng riêng ngoài Prisma migrate)
+ *  (4) Thiết bị điện tử gắn vào dự án (ThietBiDuAn — cùng bảng riêng, cùng pattern với vật tư)
  * + Phát sinh đã duyệt (Variation APPROVED)
  */
 import { prisma } from "@/lib/prisma";
@@ -15,13 +16,17 @@ export interface BudgetSummary {
   ownerPlanned: number;       // kế hoạch hạng mục CĐT tự mua
   materialsPlanned: number;   // kế hoạch vật tư hoàn thiện (thành tiền dự kiến)
   materialsSpent: number;     // vật tư đã chốt giá (thành tiền chốt)
+  equipmentPlanned: number;   // kế hoạch thiết bị điện tử (thành tiền dự kiến)
+  equipmentSpent: number;     // thiết bị đã chốt giá (thành tiền chốt)
+  otherExpensesPlanned: number; // kế hoạch chi phí phát sinh khác
+  otherExpensesSpent: number;   // chi phí phát sinh khác đã chi thực tế
   approvedVariations: number; // tổng phát sinh đã duyệt (+/-)
   totalSpent: number;
   overrun: boolean;
 }
 
 export async function getBudgetSummary(projectId: string): Promise<BudgetSummary> {
-  const [project, paidAgg, purchases, variationAgg, vatTuDuAnAll] = await Promise.all([
+  const [project, paidAgg, purchases, variationAgg, vatTuDuAnAll, thietBiDuAnAll, otherExpenseAgg] = await Promise.all([
     prisma.project.findUniqueOrThrow({ where: { id: projectId } }),
     prisma.paymentStage.aggregate({
       where: { contract: { projectId }, status: { in: ["PAID", "PARTIAL"] } },
@@ -41,6 +46,17 @@ export async function getBudgetSummary(projectId: string): Promise<BudgetSummary
         khoiLuongDuKien: true, donGiaDuKien: true, thanhTienDuKien: true,
         khoiLuongThucTe: true, donGiaChot: true, thanhTienChot: true,
       },
+    }),
+    // Module thiết bị điện tử (cùng bảng riêng ngoài Prisma migrate, cùng lý do không lọc theo projectId)
+    prisma.thietBiDuAn.findMany({
+      select: {
+        soLuongDuKien: true, donGiaDuKien: true, thanhTienDuKien: true,
+        soLuongThucTe: true, donGiaChot: true, thanhTienChot: true,
+      },
+    }),
+    prisma.otherExpense.aggregate({
+      where: { projectId },
+      _sum: { actualCost: true, plannedCost: true },
     }),
   ]);
 
@@ -69,7 +85,31 @@ export async function getBudgetSummary(projectId: string): Promise<BudgetSummary
     0,
   );
 
-  const totalSpent = contractorPaid + ownerPaid + materialsSpent;
+  const equipmentPlanned = thietBiDuAnAll.reduce(
+    (s, r) =>
+      s +
+      (tinhThanhTien(
+        r.soLuongDuKien ? Number(r.soLuongDuKien) : null,
+        r.donGiaDuKien ? Number(r.donGiaDuKien) : null,
+        r.thanhTienDuKien ? Number(r.thanhTienDuKien) : null,
+      ) ?? 0),
+    0,
+  );
+  const equipmentSpent = thietBiDuAnAll.reduce(
+    (s, r) =>
+      s +
+      (tinhThanhTien(
+        r.soLuongThucTe ? Number(r.soLuongThucTe) : null,
+        r.donGiaChot ? Number(r.donGiaChot) : null,
+        r.thanhTienChot ? Number(r.thanhTienChot) : null,
+      ) ?? 0),
+    0,
+  );
+
+  const otherExpensesPlanned = Number(otherExpenseAgg._sum.plannedCost ?? 0);
+  const otherExpensesSpent = Number(otherExpenseAgg._sum.actualCost ?? 0);
+
+  const totalSpent = contractorPaid + ownerPaid + materialsSpent + equipmentSpent + otherExpensesSpent;
 
   return {
     planned,
@@ -78,6 +118,10 @@ export async function getBudgetSummary(projectId: string): Promise<BudgetSummary
     ownerPlanned: Number(purchases._sum.plannedCost ?? 0),
     materialsPlanned,
     materialsSpent,
+    equipmentPlanned,
+    equipmentSpent,
+    otherExpensesPlanned,
+    otherExpensesSpent,
     approvedVariations: Number(variationAgg._sum.costDelta ?? 0),
     totalSpent,
     overrun: totalSpent > planned,

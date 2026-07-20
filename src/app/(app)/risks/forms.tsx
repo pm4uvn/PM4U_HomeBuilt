@@ -44,14 +44,17 @@ export function ActionMenu({ label, children }: { label: string; children: React
   );
 }
 
-export function CreateRiskForm({ projectId }: { projectId: string }) {
+export function CreateRiskForm({ projectId, picOptions = [] }: { projectId: string; picOptions?: string[] }) {
   return (
     <ModalButton label="+ Rủi ro" title="Ghi nhận rủi ro">
       {(close) => (
         <form action={async (fd) => { await createRisk(projectId, fd); close(); }} className="space-y-3">
+          <datalist id="risk-pic-options">
+            {picOptions.map((p) => <option key={p} value={p} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm rủi ro *"><Select name="category" required>{opts(RISK_CATEGORY)}</Select></Field>
-            <Field label="Người phụ trách"><Input name="owner" placeholder="CĐT / Giám sát / Nhà thầu X" /></Field>
+            <Field label="Người phụ trách"><Input name="owner" list="risk-pic-options" placeholder="CĐT / Giám sát / Nhà thầu X" /></Field>
           </div>
           <Field label="Tiêu đề *"><Input name="title" required placeholder="Đụng ống nước ngầm khi đào móng" /></Field>
           <Field label="Mô tả"><Textarea name="description" rows={2} /></Field>
@@ -83,17 +86,20 @@ export type RiskEditRow = {
   mitigationPlan: string | null;
 };
 
-export function EditRiskForm({ risk }: { risk: RiskEditRow }) {
+export function EditRiskForm({ risk, picOptions = [] }: { risk: RiskEditRow; picOptions?: string[] }) {
   return (
     <ModalButton label="Sửa" title={`Sửa rủi ro — ${risk.title}`} variant="default">
       {(close) => (
         <form action={async (fd) => { await updateRisk(risk.id, fd); close(); }} className="space-y-3">
+          <datalist id="risk-pic-options">
+            {picOptions.map((p) => <option key={p} value={p} />)}
+          </datalist>
           <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
             <Field label="Nhóm rủi ro *">
               <Select name="category" required defaultValue={risk.category}>{opts(RISK_CATEGORY)}</Select>
             </Field>
             <Field label="Người phụ trách">
-              <Input name="owner" defaultValue={risk.owner ?? ""} placeholder="CĐT / Giám sát / Nhà thầu X" />
+              <Input name="owner" list="risk-pic-options" defaultValue={risk.owner ?? ""} placeholder="CĐT / Giám sát / Nhà thầu X" />
             </Field>
           </div>
           <Field label="Tiêu đề *"><Input name="title" required defaultValue={risk.title} /></Field>

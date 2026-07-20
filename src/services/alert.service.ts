@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { daysBetween } from "@/lib/format";
 import { computeStageGrossAmount } from "@/lib/payment-calc";
 import { computePreConstructionRiskAlerts } from "./preconstruction.service";
+import { getWeatherForecast } from "./weather.service";
 import type { AlertType, RiskSeverity } from "@prisma/client";
 
 const CONTRACT_DEADLINE_WARN_DAYS = 14;
@@ -27,7 +28,7 @@ export async function computeAlerts(projectId: string) {
   const alerts: NewAlert[] = [];
   const now = new Date();
 
-  const [stages, milestones, idleLogs, pilingRecords, project, purchases, undergroundRisks, nearDeadlineContracts, preconAlerts, expiringDefects] =
+  const [stages, milestones, idleLogs, pilingRecords, project, purchases, undergroundRisks, nearDeadlineContracts, preconAlerts, expiringDefects, phases] =
     await Promise.all([
       prisma.paymentStage.findMany({
         where: { contract: { projectId }, status: { in: ["DUE", "OVERDUE", "PARTIAL"] } },
@@ -61,6 +62,10 @@ export async function computeAlerts(projectId: string) {
           warrantyEndAt: { not: null, lte: new Date(now.getTime() + WARRANTY_EXPIRING_WARN_DAYS * 86_400_000) },
         },
         include: { contract: { include: { vendor: true } } },
+      }),
+      prisma.phase.findMany({
+        where: { projectId },
+        select: { id: true, name: true, plannedStart: true, plannedEnd: true, progressPct: true },
       }),
     ]);
 
@@ -235,6 +240,30 @@ export async function computeAlerts(projectId: string) {
       refTable: "DefectLog",
       refId: d.id,
     });
+  }
+
+  // 10. Dự báo mưa to/dông trong 7 ngày tới trùng giai đoạn đang thi công (chưa xong)
+  const forecast = await getWeatherForecast(
+    project.weatherLat != null ? Number(project.weatherLat) : null,
+    project.weatherLng != null ? Number(project.weatherLng) : null,
+  );
+  for (const day of forecast) {
+    if (!day.isRisky) continue;
+    const dayDate = new Date(day.date);
+    const overlappingPhases = phases.filter(
+      (p) => p.plannedStart && p.plannedEnd && Number(p.progressPct) < 100 && p.plannedStart <= dayDate && p.plannedEnd >= dayDate,
+    );
+    for (const p of overlappingPhases) {
+      alerts.push({
+        type: "RAIN_FORECAST_RISK",
+        severity: day.label === "Dông bão" ? "HIGH" : "MEDIUM",
+        title: `Dự báo ${day.label.toLowerCase()} ${dayDate.toLocaleDateString("vi-VN")}`,
+        message: `Dự báo ${day.label.toLowerCase()} (${day.rainProbability}% khả năng, ${day.rainMm}mm) ngày ${dayDate.toLocaleDateString("vi-VN")} — có thể ảnh hưởng giai đoạn "${p.name}" đang thi công.`,
+        dueAt: dayDate,
+        refTable: "Phase",
+        refId: p.id,
+      });
+    }
   }
 
   // Idempotent: xóa cũ, ghi mới

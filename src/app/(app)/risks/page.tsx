@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getDefaultProject } from "@/services/dashboard.service";
+import { getPicOptions } from "@/services/pic.service";
 import { Card, Tag, EmptyState } from "@/components/ui";
 import { fmtVND, fmtDate, daysBetween } from "@/lib/format";
 import { RISK_CATEGORY, RISK_SEVERITY, RISK_PROBABILITY, RISK_RESPONSE_STRATEGY, IDLE_CAUSE } from "@/lib/labels";
@@ -45,6 +46,7 @@ export default async function RisksPage() {
   ]);
 
   const now = new Date();
+  const picOptions = await getPicOptions(project.id, risks.map((r) => r.owner));
 
   return (
     <div className="space-y-3">
@@ -60,7 +62,7 @@ export default async function RisksPage() {
             )}
             <CreatePilingRecordForm projectId={project.id} />
           </ActionMenu>
-          <CreateRiskForm projectId={project.id} />
+          <CreateRiskForm projectId={project.id} picOptions={picOptions} />
         </div>
       </header>
 
@@ -119,6 +121,7 @@ export default async function RisksPage() {
                         actualCostImpact: r.actualCostImpact != null ? Number(r.actualCostImpact) : null,
                         mitigationPlan: r.mitigationPlan,
                       }}
+                      picOptions={picOptions}
                     />
                     <DeleteRiskButton riskId={r.id} title={r.title} />
                   </div>

@@ -44,11 +44,14 @@ model Project {
   status         ProjectStatus @default(PREPARING)
   emailNotificationsEnabled Boolean @default(true) // gửi email nhắc cảnh báo (Alert) qua cron — bật mặc định
   shareToken     String?  @unique // token xem "Tiến độ trực quan" công khai (/share/[token]), null = chưa bật chia sẻ
+  weatherLat     Decimal? @db.Decimal(9, 6) // tọa độ để gọi API dự báo thời tiết — CĐT tự nhập 1 lần từ Google Maps
+  weatherLng     Decimal? @db.Decimal(9, 6)
 
   vendors        Vendor[]
   contracts      Contract[]
   phases         Phase[]
   ownerPurchases OwnerPurchaseItem[]
+  otherExpenses  OtherExpense[]
   dailyLogs      DailyLog[]
   riskLogs       RiskLog[]
   issueLogs      IssueLog[]
@@ -62,6 +65,7 @@ model Project {
   checklistTemplates ChecklistTemplate[]
   charter        ProjectCharter?
   stakeholders   Stakeholder[]
+  pics           Pic[]
   taskDependencies TaskDependency[]
   createdAt      DateTime @default(now())
 }
@@ -197,6 +201,22 @@ model Stakeholder {
   communicationNeed String?           // vd "Báo cáo tiến độ tuần qua Zalo", "Chỉ cần báo khi có sự cố"
   notes             String?
   createdAt         DateTime          @default(now())
+}
+
+/**
+ * Danh sách PIC (người/đơn vị phụ trách) — khác Stakeholder (Stakeholder Register nặng về ma trận
+ * quyền lực/quan tâm cho quản trị dự án); Pic gọn nhẹ, mục đích duy nhất là làm nguồn tự điền cho
+ * mọi ô chọn PIC khắp app (WBS, Nhật ký, Checklist...), nạp được từ nhà thầu hoặc tự thêm tay.
+ */
+model Pic {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  name      String
+  role      String?  // vai trò/công ty, vd "Thầu thô", "Giám sát công trình"
+  phone     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 }
 
 // ================= MODULE 1: CONTRACT & VENDORS ======================
@@ -461,6 +481,95 @@ enum PurchaseStatus {
   ORDERED
   DELIVERED
   INSTALLED
+}
+
+// --- Chi phí phát sinh khác, ngoài 4 dòng tiền có cấu trúc sẵn (dòng tiền 5) ---
+model OtherExpense {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  category    OtherExpenseCategory
+  categoryLabel String? // tên danh mục tự đặt — chỉ có ý nghĩa khi category=OTHER, giống PenaltyRule.label
+  title       String   // "Bồi dưỡng đội thợ ép cọc", "Phí xin giấy phép xây dựng"...
+  plannedCost Decimal  @db.Decimal(18, 0)
+  actualCost  Decimal? @db.Decimal(18, 0)
+  expenseDate DateTime? // ngày dự kiến/thực tế chi — dùng để đưa vào dự báo dòng tiền theo tháng
+  status      OtherExpenseStatus @default(PLANNED)
+  note        String?
+}
+
+enum OtherExpenseCategory {
+  LEGAL_PERMIT         // Pháp lý / xin phép
+  UTILITIES_CONNECTION // Đấu nối điện/nước/internet tạm thi công
+  CEREMONY             // Lễ động thổ / cất nóc / nhập trạch
+  SITE_PREP            // Dọn mặt bằng / phá dỡ nhà cũ
+  TRANSPORT            // Vận chuyển / di dời
+  GRATUITY             // Bồi dưỡng / đối ngoại
+  FINANCING_INTEREST   // Lãi vay ngân hàng
+  TEMP_HOUSING         // Thuê nhà tạm / chuyển đồ trong lúc xây
+  UNEXPECTED           // Phát sinh không lường trước
+  OTHER
+}
+
+enum OtherExpenseStatus {
+  PLANNED
+  PAID
+}
+
+// --- Bảng giá vật liệu xây dựng tham khảo (công bố chính thức tại Sở Xây Dựng) ---
+model MaterialPriceGroup {
+  id        String   @id @default(cuid())
+  code      String   @unique // "1", "2"... khớp số thứ tự thư mục gốc
+  name      String   // "Thép xây dựng", "Xi măng"...
+  sortOrder Int      @default(0)
+  listings  MaterialPriceListing[]
+}
+
+model MaterialPriceSupplier {
+  id       String   @id @default(cuid())
+  name     String   // "Công ty TNHH MTV Thép Miền Nam - VNSTEEL"
+  address  String?
+  listings MaterialPriceListing[]
+}
+
+/** 1 đợt công bố giá = 1 công văn/PDF của 1 nhà cung cấp cho 1 nhóm vật liệu */
+model MaterialPriceListing {
+  id            String   @id @default(cuid())
+  groupId       String
+  group         MaterialPriceGroup    @relation(fields: [groupId], references: [id])
+  supplierId    String
+  supplier      MaterialPriceSupplier @relation(fields: [supplierId], references: [id])
+  docNumber     String?  // "362/TMN-KD"
+  effectiveFrom DateTime
+  effectiveTo   DateTime? // null = đến khi có thông báo mới
+  sourceFile    String?  // đường dẫn file PDF gốc, để tra lại khi cần
+  items         MaterialPriceItem[]
+  createdAt     DateTime @default(now())
+}
+
+model MaterialPriceItem {
+  id            String   @id @default(cuid())
+  listingId     String
+  listing       MaterialPriceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  sttInDoc      Int?
+  materialGroup String?  // cột "Nhóm vật liệu" trong bảng, VD "Thép xây dựng"
+  name          String   // "Thép cuộn D6"
+  unit          String   // "Tấn"
+  standard      String?  // "TCVN 1651-1:2018"
+  spec          String?  // "Thép cuộn D6"
+  manufacturer  String?
+  origin        String?
+  note          String?
+  regionPrices  MaterialPriceRegion[]
+}
+
+model MaterialPriceRegion {
+  id        String   @id @default(cuid())
+  itemId    String
+  item      MaterialPriceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  region    String   // "TP.HCM", "Nha Trang", "Phú Quốc", "Cần Thơ", "Đà Nẵng"
+  unitPrice Decimal  @db.Decimal(18, 0)
+  changePct Decimal? @db.Decimal(6, 2) // % tăng/giảm so kỳ công bố trước
 }
 
 // ============= MODULE 3: SCHEDULE & MILESTONES =======================
@@ -1100,6 +1209,7 @@ enum AlertType {
   BUDGET_OVERRUN         // chi thực tế vượt ngân sách hạng mục
   PRECONSTRUCTION_RISK   // rủi ro từ 7 rule kiểm soát khởi công & nền móng chưa xử lý
   WARRANTY_EXPIRING      // khiếm khuyết còn ≤30 ngày là hết hạn bảo hành, chưa xử lý xong
+  RAIN_FORECAST_RISK     // dự báo mưa to/dông trong 7 ngày tới, trùng giai đoạn đang thi công
 }
 
 enum AlertStatus {

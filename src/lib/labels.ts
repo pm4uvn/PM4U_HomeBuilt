@@ -90,6 +90,24 @@ export const PURCHASE_STATUS: Record<string, string> = {
   INSTALLED: "Đã lắp đặt",
 };
 
+export const OTHER_EXPENSE_CATEGORY: Record<string, string> = {
+  LEGAL_PERMIT: "Pháp lý / xin phép",
+  UTILITIES_CONNECTION: "Đấu nối điện/nước/internet tạm",
+  CEREMONY: "Lễ động thổ / cất nóc / nhập trạch",
+  SITE_PREP: "Dọn mặt bằng / phá dỡ nhà cũ",
+  TRANSPORT: "Vận chuyển / di dời",
+  GRATUITY: "Bồi dưỡng / đối ngoại",
+  FINANCING_INTEREST: "Lãi vay ngân hàng",
+  TEMP_HOUSING: "Thuê nhà tạm / chuyển đồ",
+  UNEXPECTED: "Phát sinh không lường trước",
+  OTHER: "Khác",
+};
+
+export const OTHER_EXPENSE_STATUS: Record<string, string> = {
+  PLANNED: "Kế hoạch",
+  PAID: "Đã chi",
+};
+
 export const PHASE_TYPE: Record<string, string> = {
   TENDERING: "Tìm thầu",
   DESIGN_CONCEPT: "Thiết kế concept",

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/charter", label: "📜 Điều lệ dự án" },
   { href: "/charter/stakeholders", label: "👥 Bên liên quan" },
+  { href: "/charter/pic", label: "🧑‍🔧 Danh sách PIC" },
   { href: "/charter/settings", label: "⚙️ Cài đặt" },
 ];
 

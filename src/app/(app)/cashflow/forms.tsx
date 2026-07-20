@@ -4,8 +4,8 @@ import { useState } from "react";
 import { ModalButton } from "@/components/Modal";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { fmtVND } from "@/lib/format";
-import { OWNER_SUPPLY_CATEGORY, PURCHASE_STATUS } from "@/lib/labels";
-import { createPurchase, updatePurchase } from "./actions";
+import { OWNER_SUPPLY_CATEGORY, PURCHASE_STATUS, OTHER_EXPENSE_CATEGORY, OTHER_EXPENSE_STATUS } from "@/lib/labels";
+import { createPurchase, updatePurchase, createOtherExpense, updateOtherExpense } from "./actions";
 
 const opts = (m: Record<string, string>) =>
   Object.entries(m).map(([v, l]) => (
@@ -37,8 +37,9 @@ const FORECAST_TYPE_LABEL: Record<string, string> = {
   contractor: "🏗️ Hợp đồng nhà thầu",
   owner: "🛒 CĐT tự mua",
   materials: "🧱 Vật tư hoàn thiện",
+  other: "💸 Chi phí phát sinh khác",
 };
-const FORECAST_TYPE_ORDER = ["contractor", "owner", "materials"];
+const FORECAST_TYPE_ORDER = ["contractor", "owner", "materials", "other"];
 
 function ForecastItemLine({ it }: { it: ForecastLineItem }) {
   return (
@@ -144,6 +145,61 @@ export function UpdatePurchaseForm({
         <form action={async (fd) => { await updatePurchase(itemId, fd); close(); }} className="space-y-3">
           <Field label="Trạng thái">
             <Select name="status" defaultValue={currentStatus}>{opts(PURCHASE_STATUS)}</Select>
+          </Field>
+          <Field label="Chi phí thực tế (VND)">
+            <Input name="actualCost" inputMode="numeric" defaultValue={String(plannedCost)} />
+          </Field>
+          <div className="pt-2"><Button type="submit" variant="primary" className="w-full">Lưu</Button></div>
+        </form>
+      )}
+    </ModalButton>
+  );
+}
+
+export function CreateOtherExpenseForm({ projectId }: { projectId: string }) {
+  const [category, setCategory] = useState("LEGAL_PERMIT");
+  return (
+    <ModalButton label="+ Chi phí phát sinh" title="Thêm chi phí phát sinh khác">
+      {(close) => (
+        <form action={async (fd) => { await createOtherExpense(projectId, fd); close(); }} className="space-y-3">
+          <Field label="Danh mục *">
+            <Select name="category" required value={category} onChange={(e) => setCategory(e.target.value)}>
+              {opts(OTHER_EXPENSE_CATEGORY)}
+            </Select>
+          </Field>
+          {category === "OTHER" && (
+            <Field label="Tên danh mục tự đặt">
+              <Input name="categoryLabel" placeholder="VD: Phí thuê máy phát điện" />
+            </Field>
+          )}
+          <Field label="Nội dung *"><Input name="title" required placeholder="Bồi dưỡng đội thợ ép cọc" /></Field>
+          <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
+            <Field label="Chi phí dự kiến (VND) *"><Input name="plannedCost" required inputMode="numeric" /></Field>
+            <Field label="Ngày dự kiến chi"><Input name="expenseDate" type="date" /></Field>
+          </div>
+          <Field label="Ghi chú"><Input name="note" /></Field>
+          <div className="pt-2"><Button type="submit" variant="primary" className="w-full">Lưu</Button></div>
+        </form>
+      )}
+    </ModalButton>
+  );
+}
+
+export function UpdateOtherExpenseForm({
+  itemId,
+  currentStatus,
+  plannedCost,
+}: {
+  itemId: string;
+  currentStatus: string;
+  plannedCost: number;
+}) {
+  return (
+    <ModalButton label="Cập nhật" title="Cập nhật chi phí phát sinh" variant="default">
+      {(close) => (
+        <form action={async (fd) => { await updateOtherExpense(itemId, fd); close(); }} className="space-y-3">
+          <Field label="Trạng thái">
+            <Select name="status" defaultValue={currentStatus}>{opts(OTHER_EXPENSE_STATUS)}</Select>
           </Field>
           <Field label="Chi phí thực tế (VND)">
             <Input name="actualCost" inputMode="numeric" defaultValue={String(plannedCost)} />

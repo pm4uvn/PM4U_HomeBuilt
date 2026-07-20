@@ -12,6 +12,7 @@ const NAV = [
   { href: "/contracts", label: "Hợp đồng", icon: "📋" },
   { href: "/schedule", label: "Tiến độ", icon: "📅" },
   { href: "/materials", label: "Vật tư", icon: "🧱" },
+  { href: "/material-prices", label: "Bảng giá VLXD", icon: "📊" },
   { href: "/equipment", label: "Thiết bị", icon: "🔌" },
   { href: "/cashflow", label: "Dòng tiền", icon: "💰" },
   { href: "/accounts", label: "Tài khoản", icon: "🏦" },

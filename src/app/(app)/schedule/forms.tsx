@@ -394,6 +394,37 @@ type DailyLogItemInput = {
 export type DailyLogDocumentOption = { id: string; title: string; docType: string };
 export type DailyLogContractOption = { id: string; label: string };
 
+/**
+ * Ô nhập PIC kiểu combobox (input + datalist) — xóa tạm giá trị lúc focus để trình duyệt hiện ĐỦ
+ * danh sách gợi ý thay vì tự lọc theo tên đang có sẵn (hành vi mặc định của <input list=...> khi ô
+ * đã có giá trị: chỉ hiện các gợi ý CHỨA đúng chuỗi đang gõ, nên PIC hiện tại luôn là gợi ý duy nhất
+ * hiện ra). Bấm ra ngoài mà chưa chọn/gõ gì thì khôi phục giá trị cũ, không lưu rỗng.
+ */
+function PicComboInput({
+  name, listId, value, onChange,
+}: {
+  name: string; listId: string; value: string; onChange: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [touched, setTouched] = useState(false);
+  return (
+    <Input
+      name={name}
+      list={listId}
+      placeholder="Phụ trách (PIC)..."
+      title="Người/đơn vị phụ trách — chọn gợi ý hoặc gõ tên mới"
+      className="!w-40 shrink-0"
+      value={touched ? draft : value}
+      onFocus={() => { setDraft(""); setTouched(true); }}
+      onChange={(e) => { setDraft(e.target.value); onChange(e.target.value); }}
+      onBlur={() => {
+        if (touched && draft === "") onChange(value); // bấm ra mà chưa chọn/gõ gì -> khôi phục, không lưu rỗng
+        setTouched(false);
+      }}
+    />
+  );
+}
+
 /** Danh sách việc trong ngày, mỗi dòng tách riêng và tick được — thay cho 1 đoạn văn dài gộp chung */
 function DailyLogItemsEditor({
   items,
@@ -443,14 +474,11 @@ function DailyLogItemsEditor({
               value={it.label}
               onChange={(e) => update(i, { label: e.target.value })}
             />
-            <Input
+            <PicComboInput
               name="itemPic[]"
-              list="daily-log-pic-options"
-              placeholder="Phụ trách (PIC)..."
-              title="Người/đơn vị phụ trách — chọn gợi ý hoặc gõ tên mới"
-              className="!w-40 shrink-0"
+              listId="daily-log-pic-options"
               value={it.pic}
-              onChange={(e) => update(i, { pic: e.target.value })}
+              onChange={(v) => update(i, { pic: v })}
             />
             <Input
               name="itemDueDate[]"
@@ -948,91 +976,81 @@ export function DailyLogItemsView({
   if (items.length === 0) return null;
   const today = new Date().toISOString().slice(0, 10);
   return (
-    <div className="space-y-1.5 mt-1">
-      {items.map((it) => {
-        const isOverdue = !it.isChecked && it.dueDate != null && it.dueDate.slice(0, 10) < today;
-        const fallbackMilestones = it.milestoneName ? [] : dayMilestoneNames;
-        const fallbackVatTu = it.vatTuName ? [] : dayVatTuNames;
-        const hasBadges =
-          it.workType || it.dueDate || it.milestoneName || it.vatTuName || it.documentTitle || it.contractLabel || it.pic ||
-          fallbackMilestones.length > 0 || fallbackVatTu.length > 0;
-        return (
-          <div key={it.id} className="flex items-start gap-2 text-[13px]">
-            <input
-              type="checkbox"
-              className="mt-0.5 shrink-0"
-              checked={it.isChecked}
-              onChange={(e) => toggleDailyLogItem(it.id, e.target.checked)}
-            />
-            <div className="min-w-0 flex-1">
-              <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
-              {hasBadges && (
-                // Luôn xuống dòng riêng bên dưới nhãn — tránh badge dồn/lệch dòng khác nhau tùy độ dài nhãn
-                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+    <table className="w-full text-[12.5px] border-collapse">
+      <thead>
+        <tr className="text-left text-[10.5px] text-muted">
+          <th className="w-6 font-semibold pb-1"></th>
+          <th className="font-semibold pb-1">Công việc</th>
+          <th className="w-24 font-semibold pb-1 pl-2">PIC</th>
+          <th className="w-20 font-semibold pb-1 pl-2">Hạn</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((it) => {
+          const isOverdue = !it.isChecked && it.dueDate != null && it.dueDate.slice(0, 10) < today;
+          const fallbackMilestones = it.milestoneName ? [] : dayMilestoneNames;
+          const fallbackVatTu = it.vatTuName ? [] : dayVatTuNames;
+          const contextTags = [
+            it.milestoneName && `🔹 ${it.milestoneName}`,
+            it.vatTuName && `🧱 ${it.vatTuName}`,
+            it.documentTitle && `📄 ${it.documentTitle}`,
+            it.contractLabel && `📋 ${it.contractLabel}`,
+            ...fallbackMilestones.map((n) => `🔹 ${n}`),
+            ...fallbackVatTu.map((n) => `🧱 ${n}`),
+          ].filter((t): t is string => !!t);
+          return (
+            <tr key={it.id} className="border-t border-grid align-top">
+              <td className="py-1.5 pr-1">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={it.isChecked}
+                  onChange={(e) => toggleDailyLogItem(it.id, e.target.checked)}
+                />
+              </td>
+              <td className="py-1.5 pr-2 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
                   {it.workType && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-brand whitespace-nowrap font-semibold">
+                    <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-grid text-brand whitespace-nowrap font-semibold">
                       {DAILY_LOG_WORK_TYPE[it.workType] ?? it.workType}
                     </span>
                   )}
-                  {it.pic && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">👤 {it.pic}</span>
-                  )}
-                  {it.milestoneName && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🔹 {it.milestoneName}</span>
-                  )}
-                  {it.vatTuName && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">🧱 {it.vatTuName}</span>
-                  )}
-                  {it.documentTitle && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">📄 {it.documentTitle}</span>
-                  )}
-                  {it.contractLabel && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-ink-2 whitespace-nowrap">📋 {it.contractLabel}</span>
-                  )}
-                  {fallbackMilestones.map((name) => (
-                    <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
-                      🔹 {name}
-                    </span>
-                  ))}
-                  {fallbackVatTu.map((name) => (
-                    <span key={name} className="text-[11px] px-1.5 py-0.5 rounded bg-grid text-muted whitespace-nowrap opacity-60">
-                      🧱 {name}
-                    </span>
-                  ))}
-                  {it.dueDate && (
-                    <span
-                      className="text-[11px] whitespace-nowrap"
-                      style={{ color: isOverdue ? "var(--critical)" : "var(--text-muted)" }}
-                    >
-                      {isOverdue && "⚠️ "}Hạn {fmtDate(it.dueDate)}
-                    </span>
-                  )}
                 </div>
-              )}
-              <TodoDiscussion
-                source="DAILY_LOG"
-                entityId={it.id}
-                comments={it.comments ?? []}
-                reactions={it.reactions ?? []}
-                myEmail={myEmail}
-              />
-              {projectId && (
-                <div className="flex items-center gap-2 mt-1">
-                  <DailyLogItemPhotos itemId={it.id} projectId={projectId} photos={it.photos ?? []} />
-                  <VoiceNotes
-                    notes={it.voiceNotes ?? []}
-                    entityId={it.id}
-                    projectId={projectId}
-                    uploadAction={uploadDailyLogItemVoiceNote}
-                    onDelete={deleteDailyLogItemPhoto}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+                {contextTags.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5 text-[10.5px] text-muted">
+                    {contextTags.map((t) => <span key={t} className="whitespace-nowrap">{t}</span>)}
+                  </div>
+                )}
+                <TodoDiscussion
+                  source="DAILY_LOG"
+                  entityId={it.id}
+                  comments={it.comments ?? []}
+                  reactions={it.reactions ?? []}
+                  myEmail={myEmail}
+                />
+                {projectId && (
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    <DailyLogItemPhotos itemId={it.id} projectId={projectId} photos={it.photos ?? []} />
+                    <VoiceNotes
+                      notes={it.voiceNotes ?? []}
+                      entityId={it.id}
+                      projectId={projectId}
+                      uploadAction={uploadDailyLogItemVoiceNote}
+                      onDelete={deleteDailyLogItemPhoto}
+                    />
+                  </div>
+                )}
+              </td>
+              <td className="py-1.5 pr-2 text-ink-2 whitespace-nowrap">{it.pic ?? "—"}</td>
+              <td className="py-1.5 pr-2 whitespace-nowrap" style={{ color: isOverdue ? "var(--critical)" : it.dueDate ? "var(--text-muted)" : undefined }}>
+                {it.dueDate ? <>{isOverdue && "⚠️ "}{fmtDate(it.dueDate)}</> : <span className="text-muted">—</span>}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -1719,7 +1737,7 @@ export function WbsTaskPanel({
         >
           <Input name="name" required placeholder="Tên công việc..." className="!py-1 text-[13px] flex-1 min-w-[140px]" />
           <Input name="durationDays" type="number" min={1} defaultValue={1} placeholder="Số ngày" className="!py-1 text-[13px] !w-20" />
-          <Input name="responsible" placeholder="Người phụ trách" className="!py-1 text-[13px] !w-36" />
+          <Input name="responsible" list={picListId} placeholder="Người phụ trách" className="!py-1 text-[13px] !w-36" />
           <Button type="submit" variant="primary" className="!py-1">Thêm</Button>
           <button type="button" onClick={() => setAdding(false)} className="text-xs text-muted">Hủy</button>
         </form>

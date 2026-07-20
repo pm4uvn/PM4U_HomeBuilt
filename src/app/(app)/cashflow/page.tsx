@@ -8,10 +8,14 @@ import { computeStageGrossAmount } from "@/lib/payment-calc";
 import { tinhThanhTien } from "@/lib/vattu-calc";
 import { Card, Tag, StatusPill, EmptyState } from "@/components/ui";
 import { fmtVND, fmtTr, fmtDate } from "@/lib/format";
-import { OWNER_SUPPLY_CATEGORY, PURCHASE_STATUS, PAYMENT_STATUS, VT_TRANG_THAI_THI_CONG } from "@/lib/labels";
-import { CreatePurchaseForm, UpdatePurchaseForm, ForecastMonthGroups } from "./forms";
+import { OWNER_SUPPLY_CATEGORY, PURCHASE_STATUS, PAYMENT_STATUS, VT_TRANG_THAI_THI_CONG, TB_TRANG_THAI_LAP_DAT, OTHER_EXPENSE_CATEGORY, OTHER_EXPENSE_STATUS } from "@/lib/labels";
+import { CreatePurchaseForm, UpdatePurchaseForm, ForecastMonthGroups, CreateOtherExpenseForm, UpdateOtherExpenseForm } from "./forms";
 
 export const dynamic = "force-dynamic";
+
+/** Tên hiển thị danh mục chi phí phát sinh — CUSTOM (OTHER) dùng tên tự đặt, các danh mục còn lại dùng tên có sẵn */
+const otherExpenseCategoryName = (e: { category: string; categoryLabel: string | null }) =>
+  e.category === "OTHER" ? (e.categoryLabel || "Khác") : OTHER_EXPENSE_CATEGORY[e.category];
 
 export default async function CashflowPage() {
   await requireUser();
@@ -20,7 +24,7 @@ export default async function CashflowPage() {
     return <Card><EmptyState title="Chưa có dự án" sub="Tạo dự án ở trang Hợp đồng trước" /></Card>;
   }
 
-  const [budget, stages, purchases, forecast, vatTuDuAnList] = await Promise.all([
+  const [budget, stages, purchases, forecast, vatTuDuAnList, thietBiDuAnList, otherExpenses] = await Promise.all([
     getBudgetSummary(project.id),
     prisma.paymentStage.findMany({
       where: { contract: { projectId: project.id } },
@@ -37,6 +41,15 @@ export default async function CashflowPage() {
       include: { vatTu: { include: { nhom: true } } },
       orderBy: [{ vatTu: { nhom: { thuTu: "asc" } } }, { id: "asc" }],
     }),
+    // Module thiết bị điện tử (cùng bảng riêng ngoài Prisma migrate, cùng lý do không lọc theo projectId)
+    prisma.thietBiDuAn.findMany({
+      include: { thietBi: true },
+      orderBy: [{ thietBi: { maNhom: "asc" } }, { id: "asc" }],
+    }),
+    prisma.otherExpense.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ status: "asc" }, { expenseDate: "asc" }],
+    }),
   ]);
 
   const remaining = budget.planned - budget.totalSpent;
@@ -45,16 +58,19 @@ export default async function CashflowPage() {
     <div className="space-y-3">
       <header className="flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold">💰 Dòng tiền & Ngân sách</h1>
-        <div className="ml-auto"><CreatePurchaseForm projectId={project.id} /></div>
+        <div className="ml-auto flex gap-2">
+          <CreateOtherExpenseForm projectId={project.id} />
+          <CreatePurchaseForm projectId={project.id} />
+        </div>
       </header>
 
       {/* KPI */}
       <div className="grid grid-cols-4 gap-3 max-lg:grid-cols-2">
         <Card title="Ngân sách dự kiến"><div className="text-xl font-bold money">{fmtTr(budget.planned)}</div></Card>
-        <Card title="Đã chi (3 dòng tiền)">
+        <Card title="Đã chi (5 dòng tiền)">
           <div className="text-xl font-bold money">{fmtTr(budget.totalSpent)}</div>
           <div className="text-xs text-ink-2 mt-1 money">
-            Thầu {fmtTr(budget.contractorPaid)} · CĐT mua {fmtTr(budget.ownerPaid)} · Vật tư {fmtTr(budget.materialsSpent)}
+            Thầu {fmtTr(budget.contractorPaid)} · CĐT mua {fmtTr(budget.ownerPaid)} · Vật tư {fmtTr(budget.materialsSpent)} · Thiết bị {fmtTr(budget.equipmentSpent)} · Phát sinh khác {fmtTr(budget.otherExpensesSpent)}
           </div>
         </Card>
         <Card title="Còn lại">
@@ -282,6 +298,113 @@ export default async function CashflowPage() {
           Xem/sửa chi tiết khối lượng, đơn giá, trạng thái từng vật tư ở{" "}
           <Link href="/materials" className="text-brand hover:underline font-semibold">trang Vật tư</Link>.
         </p>
+      </Card>
+
+      {/* Dòng tiền 4: Thiết bị điện tử */}
+      <Card title={`Dòng tiền 4 — Thiết bị điện tử (kế hoạch ${fmtTr(budget.equipmentPlanned)})`}>
+        {thietBiDuAnList.length === 0 ? (
+          <EmptyState title="Chưa có thiết bị nào trong dự án" sub="Thêm ở trang Thiết bị" />
+        ) : (
+          <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[11px] text-muted border-b border-grid">
+                <th className="py-1 pr-2 font-semibold">Nhóm</th>
+                <th className="py-1 pr-2 font-semibold">Thiết bị</th>
+                <th className="py-1 pr-2 font-semibold text-right">Dự kiến</th>
+                <th className="py-1 pr-2 font-semibold text-right">Chốt</th>
+                <th className="py-1 font-semibold">Trạng thái lắp đặt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {thietBiDuAnList.map((tb) => {
+                const duKien = tinhThanhTien(
+                  tb.soLuongDuKien ? Number(tb.soLuongDuKien) : null,
+                  tb.donGiaDuKien ? Number(tb.donGiaDuKien) : null,
+                  tb.thanhTienDuKien ? Number(tb.thanhTienDuKien) : null,
+                );
+                const chot = tinhThanhTien(
+                  tb.soLuongThucTe ? Number(tb.soLuongThucTe) : null,
+                  tb.donGiaChot ? Number(tb.donGiaChot) : null,
+                  tb.thanhTienChot ? Number(tb.thanhTienChot) : null,
+                );
+                return (
+                  <tr key={tb.id} className="border-b border-grid last:border-0 text-[13px]">
+                    <td className="py-2 pr-2 text-ink-2">{tb.thietBi.nhomCap1}</td>
+                    <td className="py-2 pr-2 font-semibold">{tb.thietBi.tenHangMuc}</td>
+                    <td className="py-2 pr-2 text-right money">{duKien ? fmtVND(duKien) : "—"}</td>
+                    <td className="py-2 pr-2 text-right money font-bold">{chot ? fmtVND(chot) : "—"}</td>
+                    <td className="py-2">
+                      <Tag
+                        sev={
+                          tb.trangThaiLapDat === "da_lap_dat"
+                            ? "good"
+                            : tb.trangThaiLapDat === "chua_lap_dat"
+                              ? "neutral"
+                              : "warning"
+                        }
+                      >
+                        {TB_TRANG_THAI_LAP_DAT[tb.trangThaiLapDat]}
+                      </Tag>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>
+        )}
+        <p className="text-xs text-muted mt-3 pt-3 border-t border-grid">
+          Xem/sửa chi tiết số lượng, đơn giá, trạng thái từng thiết bị ở{" "}
+          <Link href="/equipment" className="text-brand hover:underline font-semibold">trang Thiết bị</Link>.
+        </p>
+      </Card>
+
+      {/* Dòng tiền 5: Chi phí phát sinh khác */}
+      <Card title={`Dòng tiền 5 — Chi phí phát sinh khác (kế hoạch ${fmtTr(budget.otherExpensesPlanned)})`}>
+        {otherExpenses.length === 0 ? (
+          <EmptyState title="Chưa có chi phí phát sinh nào" sub="Phí xin phép, bồi dưỡng đội thợ, vận chuyển phát sinh, chi phí không lường trước…" />
+        ) : (
+          <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[11px] text-muted border-b border-grid">
+                <th className="py-1 pr-2 font-semibold">Danh mục</th>
+                <th className="py-1 pr-2 font-semibold">Nội dung</th>
+                <th className="py-1 pr-2 font-semibold text-right">Dự kiến</th>
+                <th className="py-1 pr-2 font-semibold text-right">Thực tế</th>
+                <th className="py-1 pr-2 font-semibold">Ngày chi</th>
+                <th className="py-1 pr-2 font-semibold">Trạng thái</th>
+                <th className="py-1"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {otherExpenses.map((e) => (
+                <tr key={e.id} className="border-b border-grid last:border-0 text-[13px]">
+                  <td className="py-2 pr-2 text-ink-2">{otherExpenseCategoryName(e)}</td>
+                  <td className="py-2 pr-2 font-semibold">
+                    {e.title}
+                    {e.note && <div className="text-xs text-muted font-normal">{e.note}</div>}
+                  </td>
+                  <td className="py-2 pr-2 text-right money">{fmtVND(Number(e.plannedCost))}</td>
+                  <td className="py-2 pr-2 text-right money font-bold">
+                    {e.actualCost != null ? fmtVND(Number(e.actualCost)) : "—"}
+                  </td>
+                  <td className="py-2 pr-2 money">{fmtDate(e.expenseDate)}</td>
+                  <td className="py-2 pr-2">
+                    <Tag sev={e.status === "PAID" ? "good" : "neutral"}>
+                      {OTHER_EXPENSE_STATUS[e.status]}
+                    </Tag>
+                  </td>
+                  <td className="py-2 text-right">
+                    <UpdateOtherExpenseForm itemId={e.id} currentStatus={e.status} plannedCost={Number(e.plannedCost)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        )}
       </Card>
     </div>
   );

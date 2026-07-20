@@ -394,6 +394,10 @@ export function DetailGantt({
   // Mặc định "Tháng này" thay vì "Tất cả" — xem toàn bộ ~30 mốc 1 lúc luôn dài hơn 1 màn hình, phải
   // cuộn trang; thu hẹp theo tháng cho vừa màn hình hơn, người dùng vẫn bấm "Tất cả" khi cần xem hết.
   const [rangeKey, setRangeKey] = useState<RangeKey>("month");
+  // Tìm theo tên mốc/việc — khi đang gõ tìm, bỏ qua giới hạn "Xem theo" (mốc khớp có thể nằm ngoài
+  // tháng/tuần đang chọn) để tìm được xuyên suốt cả dự án, không chỉ trong khung thời gian hiện tại.
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
   const [fullscreen, setFullscreen] = useState(false);
   // "Toàn màn hình" dùng Fullscreen API thật (không chỉ CSS position:fixed) — nếu trang đang được
   // xem trong 1 khung xem trước/iframe cỡ cố định (VD panel preview trong IDE), CSS fixed chỉ phủ
@@ -509,7 +513,9 @@ export function DetailGantt({
   }
 
   const now = Date.now();
-  const win = getWindow(rangeKey, new Date(now));
+  const win = q ? null : getWindow(rangeKey, new Date(now));
+  const milestoneMatches = (m: DetailGanttMilestone) =>
+    !q || m.name.toLowerCase().includes(q) || m.tasks.some((t) => t.name.toLowerCase().includes(q));
   const min = win ? win.start.getTime() : Math.min(...allDates);
   const max = win ? win.end.getTime() : Math.max(...allDates);
   const span = Math.max(1, max - min);
@@ -556,7 +562,28 @@ export function DetailGantt({
       </datalist>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
         {rangeButtons}
-        {fullscreenButton}
+        <div className="flex items-center gap-2 flex-wrap ml-auto">
+          <div className="relative">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="🔎 Tìm mốc/việc..."
+              className="text-[12px] border border-line rounded-lg pl-2.5 pr-6 py-1 bg-surface outline-none focus:border-brand w-40 sm:w-52"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                title="Xóa tìm kiếm"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted hover:text-ink text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {fullscreenButton}
+        </div>
       </div>
       {/* overflow-y-visible bắt buộc phải khai báo rõ: CSS spec quy định nếu overflow-x khác "visible"
           mà overflow-y không khai báo, trình duyệt tự đổi overflow-y thành "auto" theo — sinh ra
@@ -630,7 +657,8 @@ export function DetailGantt({
                 +new Date(phase.plannedEnd) >= win.start.getTime() &&
                 +new Date(phase.plannedStart) <= win.end.getTime());
             const anyMilestoneInWindow = dated.some((_, idx) => isMilestoneInWindow(idx));
-            if (win && !phaseRangeInWindow && !anyMilestoneInWindow) return null;
+            const phaseMatchesQuery = !q || phase.name.toLowerCase().includes(q) || phase.milestones.some(milestoneMatches);
+            if ((win && !phaseRangeInWindow && !anyMilestoneInWindow) || !phaseMatchesQuery) return null;
             anyRowVisible = true;
 
             return (
@@ -674,6 +702,7 @@ export function DetailGantt({
                 {/* Từng mốc — thanh chạy từ mốc trước tới mốc này (chuỗi finish-to-start) */}
                 {dated.map((m, idx) => {
                   if (win && !isMilestoneInWindow(idx)) return null;
+                  if (q && !milestoneMatches(m)) return null;
                   const end = pos(m.plannedDate!);
                   const startIso = idx === 0 ? (phase.plannedStart ?? m.plannedDate!) : dated[idx - 1].plannedDate!;
                   const rawStart = Math.min(pos(startIso), end);
@@ -682,7 +711,9 @@ export function DetailGantt({
                   const connectorLeft = Math.max(0, Math.min(100, rawStart));
                   const totalTaskDays = m.tasks.reduce((s, t) => s + t.durationDays, 0);
                   const hasTasks = m.tasks.length > 0 && totalTaskDays > 0;
-                  const open = openIds.has(m.id);
+                  // Đang tìm kiếm mà chỉ có việc con khớp (tên mốc không khớp) -> tự xổ ra luôn để thấy việc khớp
+                  const queryMatchedTaskOnly = q && !m.name.toLowerCase().includes(q) && m.tasks.some((t) => t.name.toLowerCase().includes(q));
+                  const open = openIds.has(m.id) || queryMatchedTaskOnly;
                   const doneCount = m.tasks.filter((t) => t.isDone).length;
                   const statusDone = DONE_STATUSES.includes(m.status);
                   const msPct = hasTasks
@@ -832,7 +863,10 @@ export function DetailGantt({
           })}
 
           {!anyRowVisible && (
-            <EmptyState title="Không có giai đoạn/mốc nào trong khoảng thời gian đang xem" sub="Thử chọn “Tất cả” hoặc khoảng thời gian khác" />
+            <EmptyState
+              title={q ? `Không tìm thấy mốc/việc nào khớp "${query}"` : "Không có giai đoạn/mốc nào trong khoảng thời gian đang xem"}
+              sub={q ? "Thử từ khóa khác hoặc bấm ✕ để xóa tìm kiếm" : "Thử chọn “Tất cả” hoặc khoảng thời gian khác"}
+            />
           )}
 
           <div className="flex gap-3.5 flex-wrap text-[12.5px] text-ink-2 mt-2.5 pt-2 border-t border-grid">
