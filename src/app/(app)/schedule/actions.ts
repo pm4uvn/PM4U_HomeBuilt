@@ -999,6 +999,78 @@ export async function deleteMilestoneTaskPhoto(id: string) {
   revalidate();
 }
 
+/** Tải nhiều ảnh bằng chứng lên cho 1 mục checklist nghiệm thu (MilestoneChecklistItem) */
+export async function uploadMilestoneChecklistItemPhotos(
+  itemId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa chọn ảnh nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+    }
+
+    for (const file of files) {
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId,
+          docType: "SITE_PHOTO",
+          title: file.name,
+          fileUrl: path,
+          mimeType: file.type || null,
+          fileSize: file.size,
+          milestoneChecklistItemId: itemId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
+/** Xóa 1 ảnh/ghi âm đã gắn vào mục checklist (xóa cả file trong storage, tránh mồ côi) */
+export async function deleteMilestoneChecklistItemPhoto(id: string) {
+  await requireUser();
+  const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
+  await prisma.document.delete({ where: { id } });
+  await removeFromStorage(doc.fileUrl);
+  revalidate();
+}
+
+export async function uploadMilestoneChecklistItemVoiceNote(
+  itemId: string,
+  projectId: string,
+  _prev: UploadPhotosState,
+  fd: FormData,
+): Promise<UploadPhotosState> {
+  await requireUser();
+  try {
+    const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+    if (files.length === 0) return { error: "Chưa có bản ghi âm nào" };
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) return { error: `File "${file.name}" vượt quá 20MB` };
+      const path = await uploadToStorage(file, projectId);
+      await prisma.document.create({
+        data: {
+          projectId, docType: "VOICE_NOTE", title: file.name, fileUrl: path,
+          mimeType: file.type || null, fileSize: file.size, milestoneChecklistItemId: itemId,
+        },
+      });
+    }
+    revalidate();
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Lỗi không xác định" };
+  }
+}
+
 /**
  * Tải nhiều ảnh hiện trường lên thẳng cho 1 mốc nghiệm thu (Milestone) — dùng khi mốc chưa có
  * WBS con nào (nhiều mốc mới nhập từ nhà thầu chưa có việc con), khỏi phải thêm việc con giả chỉ

@@ -32,7 +32,8 @@ export type TodoItem = {
   // nhất gắn trực tiếp với 1 giai đoạn thi công cụ thể), dùng để sắp WBS theo đúng trình tự I → II → III...
   phaseOrder: number | null;
   // Mọi nguồn đều có bình luận/cảm xúc chung (bảng TodoComment/TodoReaction, polymorphic theo
-  // source+id). Riêng ảnh/ghi âm chỉ DAILY_LOG và MILESTONE_TASK có (gắn ở cấp DailyLogItem/MilestoneTask).
+  // source+id). Riêng ảnh/ghi âm chỉ DAILY_LOG, MILESTONE_TASK, MILESTONE_CHECKLIST có (gắn ở cấp
+  // DailyLogItem/MilestoneTask/MilestoneChecklistItem).
   comments?: TodoComment[];
   reactions?: TodoReaction[];
   photos?: TodoMedia[];
@@ -55,7 +56,7 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
     }),
     prisma.milestoneChecklistItem.findMany({
       where: { milestone: { phase: { projectId } } },
-      include: { milestone: { include: { phase: { select: { name: true, sortOrder: true } } } } },
+      include: { milestone: { include: { phase: { select: { name: true, sortOrder: true } } } }, documents: true },
     }),
     prisma.riskMitigationAction.findMany({
       where: { risk: { projectId } },
@@ -130,6 +131,8 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
   }
 
   for (const c of checklistItems) {
+    const urls = await Promise.all(c.documents.map((doc) => getSignedUrl(doc.fileUrl)));
+    const resolvedDocs = c.documents.map((doc, i) => ({ id: doc.id, url: urls[i] ?? "", title: doc.title, docType: doc.docType })).filter((d) => d.url);
     items.push({
       id: c.id,
       source: "MILESTONE_CHECKLIST",
@@ -145,6 +148,8 @@ export async function getTodoItems(projectId: string, myEmail = ""): Promise<Tod
       href: "/schedule",
       projectId,
       phaseOrder: c.milestone.phase.sortOrder,
+      photos: resolvedDocs.filter((d) => d.docType === "SITE_PHOTO"),
+      voiceNotes: resolvedDocs.filter((d) => d.docType === "VOICE_NOTE"),
     });
   }
 

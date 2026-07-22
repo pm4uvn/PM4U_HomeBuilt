@@ -637,6 +637,7 @@ model MilestoneChecklistItem {
   isChecked   Boolean   @default(false)
   checkedAt   DateTime?
   sortOrder   Int       @default(0)
+  documents   Document[] // ảnh/ghi âm bằng chứng gắn trực tiếp với mục checklist này
 }
 
 /** WBS cấp 4: 1 công việc thi công con dưới 1 milestone, kèm thời lượng dự kiến + người/đơn vị phụ trách */
@@ -1133,6 +1134,8 @@ model Document {
   milestoneTask      MilestoneTask? @relation(fields: [milestoneTaskId], references: [id])
   milestoneId        String?
   milestone          Milestone? @relation(fields: [milestoneId], references: [id])
+  milestoneChecklistItemId String?
+  milestoneChecklistItem   MilestoneChecklistItem? @relation(fields: [milestoneChecklistItemId], references: [id])
   dailyLogItems      DailyLogItem[] @relation("DailyLogItemLinkedDoc") // các việc trong nhật ký gắn trực tiếp với hồ sơ này
   dailyLogItemId     String? // ảnh/ghi âm hiện trường gắn thẳng vào 1 việc cụ thể trong nhật ký (khác dailyLogId — theo từng việc, không chỉ theo ngày)
   dailyLogItem       DailyLogItem? @relation("DailyLogItemPhotos", fields: [dailyLogItemId], references: [id])

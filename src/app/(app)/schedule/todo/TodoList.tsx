@@ -12,11 +12,12 @@ import {
   deleteMilestoneTask, updateMilestoneTaskLabel, addMilestoneTaskQuick,
   deleteChecklistItem, updateChecklistItemLabel, addChecklistItemQuick,
   uploadMilestoneTaskVoiceNote, deleteMilestoneTaskPhoto, uploadDailyLogItemVoiceNote, deleteDailyLogItemPhoto,
+  uploadMilestoneChecklistItemVoiceNote, deleteMilestoneChecklistItemPhoto,
 } from "../actions";
 import { toggleRiskMitigationAction, deleteRiskMitigationAction, updateRiskMitigationActionLabel, addRiskMitigationAction } from "../../risks/actions";
 import { updateIssueStatus, deleteIssue, updateIssueTitle, addIssueQuick } from "../../issues/actions";
 import { updateDefectStatus, deleteDefect, updateDefectTitle, addDefectQuick } from "../../defects/actions";
-import { TodoDiscussion, DailyLogItemPhotos, MilestoneTaskPhotos, VoiceNotes } from "../forms";
+import { TodoDiscussion, DailyLogItemPhotos, MilestoneTaskPhotos, MilestoneChecklistItemPhotos, VoiceNotes } from "../forms";
 
 export type MilestoneOption = { id: string; name: string; phaseName: string };
 export type RiskOption = { id: string; title: string };
@@ -165,7 +166,7 @@ function naturalCompare(a: string, b: string): number {
  * remount lấy state mới mỗi khi dữ liệu đổi từ nơi khác (Gantt chi tiết, Detail Plan, Nhật ký) —
  * đảm bảo DB luôn là nguồn duy nhất.
  */
-/** Mọi nguồn đều bình luận/thả cảm xúc được; riêng ảnh/ghi âm chỉ DAILY_LOG và MILESTONE_TASK có chỗ lưu trong DB (xem nhánh render bên dưới) */
+/** Mọi nguồn đều bình luận/thả cảm xúc được; riêng ảnh/ghi âm chỉ DAILY_LOG, MILESTONE_TASK, MILESTONE_CHECKLIST có chỗ lưu trong DB (xem nhánh render bên dưới) */
 
 function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willBeDone: boolean) => void; myEmail: string }) {
   const [isPending, startTransition] = useTransition();
@@ -382,6 +383,18 @@ function TodoRow({ item, onToggle, myEmail }: { item: TodoItem; onToggle: (willB
                     projectId={item.projectId}
                     uploadAction={uploadMilestoneTaskVoiceNote}
                     onDelete={deleteMilestoneTaskPhoto}
+                  />
+                </div>
+              )}
+              {item.source === "MILESTONE_CHECKLIST" && (
+                <div className="flex flex-wrap gap-3 items-start">
+                  <MilestoneChecklistItemPhotos itemId={item.id} projectId={item.projectId} photos={item.photos ?? []} />
+                  <VoiceNotes
+                    notes={item.voiceNotes ?? []}
+                    entityId={item.id}
+                    projectId={item.projectId}
+                    uploadAction={uploadMilestoneChecklistItemVoiceNote}
+                    onDelete={deleteMilestoneChecklistItemPhoto}
                   />
                 </div>
               )}

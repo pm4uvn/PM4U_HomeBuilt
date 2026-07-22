@@ -37,7 +37,7 @@ export default async function SchedulePage() {
         milestones: {
           include: {
             inspections: { orderBy: { confirmedAt: "desc" }, take: 1 },
-            checklistItems: { orderBy: { sortOrder: "asc" } },
+            checklistItems: { orderBy: { sortOrder: "asc" }, include: { documents: true } },
             tasks: { orderBy: { sortOrder: "asc" }, include: { documents: true } },
             documents: true,
           },
@@ -104,6 +104,21 @@ export default async function SchedulePage() {
         photosByMilestoneId.set(m.id, photos);
         voiceNotesByMilestoneId.set(m.id, voiceNotes);
       }),
+    ),
+  );
+
+  // Ảnh/ghi âm bằng chứng gắn vào từng mục checklist nghiệm thu
+  const photosByChecklistItemId = new Map<string, { id: string; url: string; title: string }[]>();
+  const voiceNotesByChecklistItemId = new Map<string, { id: string; url: string; title: string }[]>();
+  await Promise.all(
+    phases.flatMap((p) =>
+      p.milestones.flatMap((m) =>
+        m.checklistItems.map(async (c) => {
+          const { photos, voiceNotes } = await resolveDocs(c.documents);
+          photosByChecklistItemId.set(c.id, photos);
+          voiceNotesByChecklistItemId.set(c.id, voiceNotes);
+        }),
+      ),
     ),
   );
 
@@ -220,7 +235,13 @@ export default async function SchedulePage() {
                             notes: m.inspections[0].notes,
                           }
                         : null,
-                      checklistItems: m.checklistItems.map((c) => ({ id: c.id, label: c.label, isChecked: c.isChecked })),
+                      checklistItems: m.checklistItems.map((c) => ({
+                        id: c.id,
+                        label: c.label,
+                        isChecked: c.isChecked,
+                        photos: photosByChecklistItemId.get(c.id) ?? [],
+                        voiceNotes: voiceNotesByChecklistItemId.get(c.id) ?? [],
+                      })),
                       photos: photosByMilestoneId.get(m.id) ?? [],
                       voiceNotes: voiceNotesByMilestoneId.get(m.id) ?? [],
                       tasks: m.tasks.map((t) => ({

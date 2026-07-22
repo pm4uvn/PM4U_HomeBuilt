@@ -19,6 +19,7 @@ import {
   uploadMilestonePhotos, deleteMilestonePhoto,
   uploadDailyLogItemPhotos, deleteDailyLogItemPhoto,
   uploadDailyLogVoiceNote, uploadMilestoneVoiceNote, uploadMilestoneTaskVoiceNote, uploadDailyLogItemVoiceNote,
+  uploadMilestoneChecklistItemPhotos, deleteMilestoneChecklistItemPhoto, uploadMilestoneChecklistItemVoiceNote,
   toggleChecklistItem, addChecklistItem, deleteChecklistItem,
   toggleMilestoneTask, addMilestoneTask, deleteMilestoneTask, updateMilestoneTaskFields,
   addTodoComment, deleteTodoComment, toggleTodoReaction,
@@ -1199,6 +1200,77 @@ export function MilestoneTaskPhotos({
   );
 }
 
+/** Ảnh bằng chứng gắn vào 1 mục checklist nghiệm thu — cùng cơ chế với MilestoneTaskPhotos */
+export function MilestoneChecklistItemPhotos({
+  itemId,
+  projectId,
+  photos,
+}: {
+  itemId: string;
+  projectId: string;
+  photos: DailyLogPhoto[];
+}) {
+  const [state, action, pending] = useActionState<UploadPhotosState, FormData>(
+    async (prev, fd) => uploadMilestoneChecklistItemPhotos(itemId, projectId, prev, fd),
+    {},
+  );
+  const formRef = useRef<HTMLFormElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-1">
+      {photos.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1.5">
+          {photos.map((p, i) => (
+            <div key={p.id} className="relative group shrink-0">
+              <PreviewButton
+                url={p.url}
+                mimeType="image/jpeg"
+                title={p.title}
+                siblings={photos.map((x) => ({ url: x.url, mimeType: "image/jpeg", title: x.title }))}
+                index={i}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt={p.title} className="w-14 h-14 object-cover rounded border border-line cursor-pointer" />
+              </PreviewButton>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Xóa ảnh "${p.title}"?`)) deleteMilestoneChecklistItemPhoto(p.id);
+                }}
+                className="absolute -top-1.5 -right-1.5 bg-critical text-white rounded-full w-4 h-4 text-[10px] leading-4 opacity-0 group-hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form ref={formRef} action={action}>
+        <input
+          ref={inputRef}
+          type="file"
+          name="files"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={() => formRef.current?.requestSubmit()}
+        />
+        <Button
+          type="button"
+          variant="default"
+          className="!py-1 !px-2 text-xs"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+        >
+          {pending ? "Đang tải..." : "+ Ảnh"}
+        </Button>
+      </form>
+      {state.error && <p className="text-critical text-xs mt-1">{state.error}</p>}
+    </div>
+  );
+}
+
 /** Ảnh công trường gắn thẳng vào 1 mốc nghiệm thu — dùng cho mốc chưa có WBS con nào để gắn ảnh vào */
 export function MilestonePhotos({
   milestoneId,
@@ -1459,17 +1531,70 @@ export function DeleteDailyLogButton({ id, logDate }: { id: string; logDate: str
  * Checklist công việc cần kiểm tra trước khi nghiệm thu 1 milestone —
  * tick từng mục, thêm/xóa mục tùy chỉnh. Hiện ngay dưới milestone, không cần mở modal.
  */
+function ChecklistItemRow({
+  it,
+  projectId,
+}: {
+  it: { id: string; label: string; isChecked: boolean; photos?: DailyLogPhoto[]; voiceNotes?: DailyLogPhoto[] };
+  projectId: string;
+}) {
+  const [showPhotos, setShowPhotos] = useState(false);
+  const photoCount = (it.photos?.length ?? 0) + (it.voiceNotes?.length ?? 0);
+
+  return (
+    <div>
+      <label className="flex items-center gap-2 text-[13px] group">
+        <input
+          type="checkbox"
+          checked={it.isChecked}
+          onChange={() => toggleChecklistItem(it.id)}
+        />
+        <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
+        <button
+          type="button"
+          onClick={() => setShowPhotos((s) => !s)}
+          className="text-[11px] text-ink-2 hover:text-brand whitespace-nowrap"
+          title="Ảnh & ghi âm bằng chứng"
+        >
+          📷🎙️{photoCount > 0 ? ` ${photoCount}` : ""}
+        </button>
+        <button
+          type="button"
+          onClick={() => deleteChecklistItem(it.id)}
+          className="text-critical text-xs opacity-0 group-hover:opacity-100 ml-1"
+        >
+          Xóa
+        </button>
+      </label>
+      {showPhotos && (
+        <div className="pl-6 mt-1 flex flex-wrap gap-3 items-start">
+          <MilestoneChecklistItemPhotos itemId={it.id} projectId={projectId} photos={it.photos ?? []} />
+          <VoiceNotes
+            notes={it.voiceNotes ?? []}
+            entityId={it.id}
+            projectId={projectId}
+            uploadAction={uploadMilestoneChecklistItemVoiceNote}
+            onDelete={deleteMilestoneChecklistItemPhoto}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChecklistPanel({
   milestoneId,
   milestoneName,
   items,
   templates = [],
+  projectId,
 }: {
   milestoneId: string;
   milestoneName: string;
-  items: { id: string; label: string; isChecked: boolean }[];
+  items: { id: string; label: string; isChecked: boolean; photos?: DailyLogPhoto[]; voiceNotes?: DailyLogPhoto[] }[];
   /** Mẫu checklist tự quản lý (trang Mẫu Checklist) — ưu tiên hơn kho gợi ý cứng nếu trùng tên hạng mục */
   templates?: { category: string; items: string[] }[];
+  projectId: string;
 }) {
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
@@ -1495,21 +1620,7 @@ export function ChecklistPanel({
       )}
       <div className="space-y-1">
         {items.map((it) => (
-          <label key={it.id} className="flex items-center gap-2 text-[13px] group">
-            <input
-              type="checkbox"
-              checked={it.isChecked}
-              onChange={() => toggleChecklistItem(it.id)}
-            />
-            <span className={it.isChecked ? "line-through text-muted" : "text-ink-2"}>{it.label}</span>
-            <button
-              type="button"
-              onClick={() => deleteChecklistItem(it.id)}
-              className="text-critical text-xs opacity-0 group-hover:opacity-100 ml-1"
-            >
-              Xóa
-            </button>
-          </label>
+          <ChecklistItemRow key={it.id} it={it} projectId={projectId} />
         ))}
       </div>
       {adding ? (
@@ -1771,7 +1882,7 @@ export type MilestoneRowData = {
   requestedAt: string | null;
   confirmDeadlineHrs: number;
   lastInspection: { result: string; method: string; confirmedAt: string; notes: string | null } | null;
-  checklistItems: { id: string; label: string; isChecked: boolean }[];
+  checklistItems: { id: string; label: string; isChecked: boolean; photos?: DailyLogPhoto[]; voiceNotes?: DailyLogPhoto[] }[];
   tasks: MilestoneTaskRow[];
   photos?: DailyLogPhoto[];
   voiceNotes?: DailyLogPhoto[];
@@ -1864,7 +1975,7 @@ export function MilestoneRow({
             />
           </div>
           <WbsTaskPanel milestoneId={m.id} tasks={m.tasks} picOptions={picOptions} projectId={projectId} />
-          <ChecklistPanel milestoneId={m.id} milestoneName={m.name} items={m.checklistItems} templates={templates} />
+          <ChecklistPanel milestoneId={m.id} milestoneName={m.name} items={m.checklistItems} templates={templates} projectId={projectId} />
         </>
       )}
     </div>
